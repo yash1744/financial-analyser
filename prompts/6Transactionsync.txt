@@ -1,0 +1,24 @@
+Continue the project.
+
+Implement Plaid transaction synchronization using /transactions/sync.
+
+Requirements:
+
+1. Retrieve cursor from plaid_sync_state.
+2. Call Plaid sync API.
+3. Store raw response in raw_plaid_transactions.
+4. Normalize transactions.
+5. Insert/update normalized transactions.
+6. Handle:
+   - added
+   - modified
+   - removed
+7. Save next cursor.
+8. Prevent duplicates.
+9. Make synchronization idempotent.
+
+Create:
+
+POST /transactions/sync
+
+Explain the sync algorithm and error recovery.

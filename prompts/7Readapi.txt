@@ -1,0 +1,28 @@
+Continue the project.
+
+Create read APIs.
+
+Implement:
+
+GET /accounts
+
+GET /transactions
+
+GET /categories
+
+Requirements:
+
+Transactions API:
+
+- Pagination
+- Date filters
+- Amount filters
+- Category filter
+- Account filter
+- Sorting
+
+Use repository + service architecture.
+
+Return clean DTOs.
+
+Do not expose ORM models directly.

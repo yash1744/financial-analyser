@@ -1,0 +1,44 @@
+Continue from the existing project.
+
+Implement the Plaid authentication flow.
+
+Create APIs:
+
+POST /plaid/link-token
+
+POST /plaid/exchange-token
+
+Flow:
+
+Frontend requests Link Token
+
+↓
+
+Plaid Link opens
+
+↓
+
+Frontend receives public_token
+
+↓
+
+Backend exchanges it
+
+↓
+
+Store:
+- access_token (encrypted)
+- item_id
+- institution
+- user relationship
+
+Requirements:
+
+- Request/Response schemas
+- Repository layer
+- Service layer
+- Proper validation
+- Error handling
+- Clean architecture
+
+Do not sync transactions yet.

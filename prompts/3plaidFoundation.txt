@@ -1,0 +1,27 @@
+Continue from the existing project.
+
+Add Plaid integration.
+
+Requirements:
+
+- Plaid Python SDK
+- Sandbox support
+- Environment configuration
+- Plaid service class
+- Proper dependency injection
+- Error handling
+
+Implement:
+
+PlaidService
+
+Methods:
+
+- create_link_token()
+- exchange_public_token()
+- get_accounts()
+- sync_transactions()
+
+Do NOT create API endpoints yet.
+
+Generate clean service code and explain the Plaid authentication flow.

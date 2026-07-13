@@ -1,0 +1,47 @@
+You are a Senior Backend Engineer.
+
+I am building a personal finance application that will eventually integrate with Plaid and an LLM, but right now I only want to build the project foundation.
+
+Tech Stack:
+- Python 3.13+
+- FastAPI
+- PostgreSQL
+- SQLAlchemy 2.x
+- Alembic
+- Pydantic v2
+- uv package manager
+- Docker & Docker Compose
+
+Goals:
+- Follow clean architecture principles.
+- Keep the project simple but scalable.
+- Avoid overengineering.
+- This is currently a monolith.
+
+Create a production-quality project structure.
+
+Requirements:
+
+1. Project structure
+2. Configuration management using environment variables
+3. Logging setup
+4. Dependency injection
+5. Database package (without models)
+6. API router structure
+7. Service layer
+8. Repository layer
+9. Schema layer
+10. Shared utilities
+11. Health endpoint
+12. Docker setup
+13. Docker Compose
+14. .env.example
+15. requirements/pyproject.toml
+
+Do NOT implement:
+- Plaid
+- Authentication
+- Database models
+- Business logic
+
+Explain why each folder exists and why this architecture is appropriate.

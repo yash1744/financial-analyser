@@ -1,0 +1,26 @@
+Continue the project.
+
+Implement account synchronization.
+
+After a Plaid Item is connected:
+
+Fetch accounts.
+
+Store:
+
+- checking
+- savings
+- credit cards
+
+Requirements:
+
+- Prevent duplicate accounts
+- Update balances
+- Handle renamed accounts
+- Repository pattern
+- Service layer
+- API endpoint
+
+Create:
+
+POST /plaid/accounts/sync

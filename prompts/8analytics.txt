@@ -1,0 +1,21 @@
+Continue the project.
+
+Implement analytics APIs.
+
+Create:
+
+GET /analytics/monthly-spending
+
+GET /analytics/category-breakdown
+
+GET /analytics/top-merchants
+
+GET /analytics/month-over-month
+
+Requirements:
+
+- SQL aggregation
+- Service layer
+- Repository layer
+- Efficient queries
+- Explain indexes used.

@@ -1,0 +1,141 @@
+
+
+Create the initial PostgreSQL database schema.
+
+Requirements:
+
+## Tables needed
+
+### 1. users
+Represents application users.
+
+Fields:
+- id (UUID primary key)
+- email (unique)
+- created_at
+- updated_at
+
+
+### 2. plaid_items
+Represents a connected financial institution through Plaid.
+
+A user can have multiple Plaid connections.
+
+Fields:
+- id (UUID primary key)
+- user_id (foreign key to users)
+- plaid_item_id (unique)
+- institution_id
+- institution_name
+- access_token_encrypted
+- status
+- created_at
+- updated_at
+
+
+### 3. accounts
+Represents individual bank accounts or credit card accounts.
+
+Example:
+A Chase Plaid connection can have:
+- Checking account
+- Savings account
+- Credit card
+
+Fields:
+- id (UUID primary key)
+- plaid_item_id (foreign key)
+- plaid_account_id (unique)
+- name
+- account_type
+- account_subtype
+- current_balance
+- available_balance
+- currency
+- created_at
+- updated_at
+
+
+### 4. raw_plaid_transactions
+Stores the original Plaid API response.
+
+Purpose:
+- Debugging
+- Future reprocessing
+- Improved categorization models
+
+Fields:
+- id (UUID primary key)
+- plaid_transaction_id (unique)
+- plaid_item_id
+- raw_payload (JSONB)
+- processing_status
+- received_at
+- processed_at
+
+
+### 5. transactions
+Normalized application transaction table.
+
+Fields:
+- id (UUID primary key)
+- account_id (foreign key)
+- plaid_transaction_id (unique)
+- transaction_date
+- merchant_name
+- amount
+- currency
+- category_id (foreign key)
+- transaction_type
+- pending
+- created_at
+- updated_at
+
+
+### 6. categories
+Transaction categories.
+
+Fields:
+- id (UUID primary key)
+- name
+- parent_category_id (self reference for future hierarchy)
+- created_at
+
+
+### 7. plaid_sync_state
+Tracks Plaid transaction synchronization.
+
+Plaid uses cursor-based sync.
+
+Fields:
+- id (UUID primary key)
+- plaid_item_id (foreign key)
+- cursor
+- last_synced_at
+- sync_status
+- created_at
+- updated_at
+
+
+## Database design requirements
+
+- Use PostgreSQL best practices.
+- Use UUID primary keys.
+- Add appropriate indexes.
+- Add unique constraints where required.
+- Add foreign key relationships.
+- Use timestamps with timezone.
+- Use JSONB for raw Plaid payload.
+- Prevent duplicate transactions.
+- Design for future extension:
+  - analytics
+  - AI chatbot
+  - merchant normalization
+  - recurring payments
+
+Generate:
+1. SQLAlchemy ORM models.
+2. Alembic migration file.
+3. Entity relationship explanation.
+4. Recommended indexes.
+5. Any design improvements you suggest.

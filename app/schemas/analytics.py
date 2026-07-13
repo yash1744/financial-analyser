@@ -25,6 +25,10 @@ class MonthlySpendingQuery(AnalyticsRangeQuery):
     account_id: uuid.UUID | None = None
 
 
+class CategoryBreakdownQuery(AnalyticsRangeQuery):
+    account_id: uuid.UUID | None = None
+
+
 class TopMerchantsQuery(AnalyticsRangeQuery):
     limit: int = Field(default=10, ge=1, le=50)
 

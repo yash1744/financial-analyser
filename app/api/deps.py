@@ -16,6 +16,7 @@ from app.db.session import get_db_session
 from app.services.account_sync import AccountSyncService
 from app.services.analytics import AnalyticsService
 from app.services.health import HealthService
+from app.services.insights import InsightsService
 from app.services.plaid import PlaidService, build_plaid_client
 from app.services.plaid_link import PlaidLinkService
 from app.services.queries import (
@@ -125,3 +126,10 @@ def get_analytics_service(session: DbSessionDep) -> AnalyticsService:
 
 
 AnalyticsServiceDep = Annotated[AnalyticsService, Depends(get_analytics_service)]
+
+
+def get_insights_service(session: DbSessionDep) -> InsightsService:
+    return InsightsService(session=session)
+
+
+InsightsServiceDep = Annotated[InsightsService, Depends(get_insights_service)]

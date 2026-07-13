@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.api.deps import get_plaid_service, get_token_cipher
 from app.main import app
+from app.models.plaid_item import PlaidItem
 from app.models.plaid_sync_state import PlaidSyncState
 from app.models.raw_plaid_transaction import RawPlaidTransaction
 from app.models.transaction import Transaction
@@ -197,8 +198,13 @@ async def test_transaction_sync_flow():
             assert raws["t1"].raw_payload["amount"] == 15.00
             assert raws["t3"].processing_status == "skipped"
 
+            # scoped to this test's item — the dev DB may hold other sync states
             state = (
-                await session.execute(select(PlaidSyncState))
+                await session.execute(
+                    select(PlaidSyncState)
+                    .join(PlaidItem, PlaidSyncState.plaid_item_id == PlaidItem.id)
+                    .where(PlaidItem.plaid_item_id == "item-txsync-1")
+                )
             ).scalars().one()
             assert state.cursor == "cur-3"  # failed cycle 5 did not advance it
             assert state.sync_status == "error"

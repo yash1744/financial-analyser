@@ -23,6 +23,9 @@ LLM features land later.
 | GET | `/api/v1/analytics/category-breakdown` | Spending by category with % shares |
 | GET | `/api/v1/analytics/top-merchants` | Merchants ranked by total spend |
 | GET | `/api/v1/analytics/month-over-month` | Last N months with deltas vs prior month |
+| GET | `/api/v1/insights/spending-summary` | Headline totals + top category/merchant for a range |
+| GET | `/api/v1/insights/compare-spending` | Baseline vs comparison period with per-category deltas |
+| GET | `/api/v1/insights/recurring-transactions` | Detected subscription-like charges with cadence |
 
 Interactive docs at <http://localhost:8000/docs>. `user_id` currently rides
 in request bodies; it moves to the auth context once authentication exists.
@@ -212,6 +215,34 @@ Cross-account date filters can use `ix_transactions_transaction_date`;
 `ix_transactions_category_id` backs the category grouping/filter. At
 single-user data volumes the planner may still choose sequential scans —
 the indexes matter as the data grows.
+
+## Finance intelligence
+
+`InsightsService` (`app/services/insights.py`) is the interpretive read
+layer: answer-shaped compositions over transaction history, next to
+`AnalyticsService` (chart series) and the query services (row retrieval).
+All logic lives in the services; three consumers share it:
+
+- **REST**: the `/insights/*` endpoints above (plus `merchant=` text search
+  on `GET /transactions` and `account_id=` on category breakdown).
+- **LLM tools**: `app/llm/tools.py` — `build_finance_toolset(session,
+  user_id)` returns a `FinanceToolset` whose `definitions()` are
+  provider-ready `{name, description, input_schema}` dicts and whose
+  `execute(name, args)` validates with the same Pydantic params models the
+  REST layer uses and calls the same service methods. `user_id` is bound at
+  construction and never appears in a tool schema, so the model can only
+  read the data of the user it was built for.
+- **Scheduled jobs** (future): call the services directly with a session.
+
+The `*Params` models in `app/schemas/insights.py` deliberately exclude
+`user_id`; REST query models inherit them and add it. One validation path,
+zero duplicated business logic.
+
+Recurring detection: SQL narrows to merchants with ≥ N outflows in the
+lookback window (`TransactionRepository.recurring_candidates`), then the
+service classifies each merchant — every gap between charges within 4 days
+of the median gap, median gap inside a cadence band (weekly / biweekly /
+monthly / quarterly / yearly), every amount within ±20% of the median.
 
 ## Data model
 

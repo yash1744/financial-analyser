@@ -4,7 +4,7 @@ from fastapi import APIRouter, Query
 
 from app.api.deps import AnalyticsServiceDep
 from app.schemas.analytics import (
-    AnalyticsRangeQuery,
+    CategoryBreakdownQuery,
     CategoryBreakdownResponse,
     MonthlySpendingQuery,
     MonthlySpendingResponse,
@@ -29,10 +29,12 @@ async def monthly_spending(
 
 @router.get("/category-breakdown", response_model=CategoryBreakdownResponse)
 async def category_breakdown(
-    query: Annotated[AnalyticsRangeQuery, Query()], service: AnalyticsServiceDep
+    query: Annotated[CategoryBreakdownQuery, Query()], service: AnalyticsServiceDep
 ) -> CategoryBreakdownResponse:
     """Spending by category with each category's share of the total."""
-    return await service.category_breakdown(query.user_id, query.start_date, query.end_date)
+    return await service.category_breakdown(
+        query.user_id, query.start_date, query.end_date, query.account_id
+    )
 
 
 @router.get("/top-merchants", response_model=TopMerchantsResponse)

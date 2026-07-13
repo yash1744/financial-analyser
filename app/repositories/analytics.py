@@ -75,11 +75,40 @@ class AnalyticsRepository(BaseRepository):
         ).group_by(month).order_by(month)
         return list(await self.session.execute(query))
 
+    async def period_totals(
+        self,
+        user_id: uuid.UUID,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        account_id: uuid.UUID | None = None,
+    ) -> Row:
+        """One aggregate row for the whole period (always returned, possibly
+        all-zero): spending, income, counts, actual first/last dates."""
+        spending_count = func.coalesce(
+            func.sum(case((Transaction.amount > 0, 1), else_=0)), 0
+        )
+        query = self._scoped(
+            select(
+                _SPENDING.label("spending"),
+                _INCOME.label("income"),
+                func.count(Transaction.id).label("transaction_count"),
+                spending_count.label("spending_transaction_count"),
+                func.min(Transaction.transaction_date).label("first_date"),
+                func.max(Transaction.transaction_date).label("last_date"),
+            ),
+            user_id,
+            start_date,
+            end_date,
+            account_id,
+        )
+        return (await self.session.execute(query)).one()
+
     async def category_totals(
         self,
         user_id: uuid.UUID,
         start_date: date | None = None,
         end_date: date | None = None,
+        account_id: uuid.UUID | None = None,
     ) -> list[Row]:
         """Spending (outflow only) grouped by category; NULL = uncategorized."""
         total = func.sum(Transaction.amount).label("total")
@@ -94,6 +123,7 @@ class AnalyticsRepository(BaseRepository):
                 user_id,
                 start_date,
                 end_date,
+                account_id,
             )
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(Transaction.amount > 0)
@@ -108,6 +138,7 @@ class AnalyticsRepository(BaseRepository):
         start_date: date | None = None,
         end_date: date | None = None,
         limit: int = 10,
+        account_id: uuid.UUID | None = None,
     ) -> list[Row]:
         """Top merchants by spending (outflow only, unnamed merchants excluded)."""
         total = func.sum(Transaction.amount).label("total")
@@ -121,6 +152,7 @@ class AnalyticsRepository(BaseRepository):
                 user_id,
                 start_date,
                 end_date,
+                account_id,
             )
             .where(Transaction.amount > 0, Transaction.merchant_name.is_not(None))
             .group_by(Transaction.merchant_name)

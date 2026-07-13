@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 from itertools import batched
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Row, delete, func, select
 
 from app.models.account import Account
 from app.models.plaid_item import PlaidItem
@@ -17,6 +17,11 @@ _SORT_COLUMNS = {
     "amount": Transaction.amount,
     "merchant_name": Transaction.merchant_name,
 }
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcards so user text matches literally."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class TransactionRepository(BaseRepository):
@@ -40,6 +45,7 @@ class TransactionRepository(BaseRepository):
         user_id: uuid.UUID,
         account_id: uuid.UUID | None = None,
         category_id: uuid.UUID | None = None,
+        merchant: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
         min_amount: Decimal | None = None,
@@ -55,6 +61,10 @@ class TransactionRepository(BaseRepository):
             conditions.append(Transaction.account_id == account_id)
         if category_id is not None:
             conditions.append(Transaction.category_id == category_id)
+        if merchant is not None:
+            conditions.append(
+                Transaction.merchant_name.ilike(f"%{_escape_like(merchant)}%")
+            )
         if start_date is not None:
             conditions.append(Transaction.transaction_date >= start_date)
         if end_date is not None:
@@ -82,6 +92,39 @@ class TransactionRepository(BaseRepository):
             scoped.order_by(ordering, Transaction.id).limit(limit).offset(offset)
         )
         return list(result.scalars()), total or 0
+
+    async def recurring_candidates(
+        self, user_id: uuid.UUID, since: date, min_occurrences: int
+    ) -> list[Row]:
+        """Outflow rows for merchants charged >= min_occurrences times since
+        `since`, ordered per merchant by date. Cadence detection happens in
+        the service — SQL only narrows to plausible candidates."""
+        counted = (
+            select(
+                Transaction.merchant_name,
+                Transaction.transaction_date,
+                Transaction.amount,
+                Transaction.currency,
+                func.count()
+                .over(partition_by=Transaction.merchant_name)
+                .label("occurrences"),
+            )
+            .join(Account, Transaction.account_id == Account.id)
+            .join(PlaidItem, Account.plaid_item_id == PlaidItem.id)
+            .where(
+                PlaidItem.user_id == user_id,
+                Transaction.amount > 0,
+                Transaction.merchant_name.is_not(None),
+                Transaction.transaction_date >= since,
+            )
+            .subquery()
+        )
+        query = (
+            select(counted)
+            .where(counted.c.occurrences >= min_occurrences)
+            .order_by(counted.c.merchant_name, counted.c.transaction_date)
+        )
+        return list(await self.session.execute(query))
 
     async def delete_by_plaid_ids(self, ids: list[str]) -> int:
         """Delete normalized rows for Plaid-removed transactions; returns count."""

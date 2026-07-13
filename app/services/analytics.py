@@ -77,9 +77,12 @@ class AnalyticsService:
         user_id: uuid.UUID,
         start_date: date | None = None,
         end_date: date | None = None,
+        account_id: uuid.UUID | None = None,
     ) -> CategoryBreakdownResponse:
         await self._require_user(user_id)
-        rows = await self.analytics.category_totals(user_id, start_date, end_date)
+        rows = await self.analytics.category_totals(
+            user_id, start_date, end_date, account_id
+        )
         total_spending = sum((row.total for row in rows), Decimal("0"))
         return CategoryBreakdownResponse(
             total_spending=_money(total_spending),

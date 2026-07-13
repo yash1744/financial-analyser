@@ -1,0 +1,68 @@
+Continue building my personal finance application.
+
+Current stack:
+- FastAPI
+- PostgreSQL
+- SQLAlchemy
+- Alembic
+- Plaid
+
+Current service classes:
+
+- UserService
+- PlaidService
+- PlaidLinkService
+- AccountSyncService
+- AccountQueryService
+- TransactionSyncService
+- AnalyticsService
+
+I now want to build the Finance Intelligence layer.
+
+The Finance Intelligence layer must be reusable by:
+1. FastAPI endpoints
+2. LLM tool calling
+3. Future scheduled jobs
+
+The business logic should exist only once.
+
+Architecture:
+
+FastAPI Endpoint
+        |
+LLM Tool Wrapper
+        |
+Finance Intelligence Service
+        |
+Repositories
+        |
+PostgreSQL
+
+Requirements:
+
+Implement the following capabilities inside AnalyticsService (or split into additional services if you think it improves cohesion):
+
+1. get_spending_summary()
+2. get_spending_by_category()
+3. search_transactions()
+4. compare_spending()
+5. get_recurring_transactions()
+
+For each capability:
+
+- Explain which service it belongs in.
+- Create request and response Pydantic models.
+- Implement repository methods.
+- Implement service methods.
+- Create FastAPI endpoints.
+- Create thin LLM tool wrappers that simply call the service.
+- Do not duplicate business logic between REST APIs and LLM tools.
+
+Use dependency injection throughout.
+
+Return structured JSON objects from the service layer. The LLM will convert those into natural-language responses.
+
+Before writing code, explain:
+1. Why each capability belongs in its chosen service.
+2. Whether AnalyticsService is becoming too large.
+3. If any new services should be introduced.

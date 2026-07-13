@@ -47,12 +47,18 @@ class TransactionResponse(BaseModel):
     created_at: datetime
 
 
-class TransactionListQuery(BaseModel):
-    """GET /transactions query parameters."""
+class TransactionSearchParams(BaseModel):
+    """Search filters without user_id — shared by the REST query model
+    (which adds user_id) and the LLM tool schema (which injects it)."""
 
-    user_id: uuid.UUID  # moves to the auth context once authentication lands
     account_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
+    merchant: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Case-insensitive substring match on the merchant name",
+    )
     start_date: date | None = None  # inclusive
     end_date: date | None = None  # inclusive
     min_amount: Decimal | None = None
@@ -73,6 +79,12 @@ class TransactionListQuery(BaseModel):
         ):
             raise ValueError("min_amount must be less than or equal to max_amount")
         return self
+
+
+class TransactionListQuery(TransactionSearchParams):
+    """GET /transactions query parameters."""
+
+    user_id: uuid.UUID  # moves to the auth context once authentication lands
 
 
 class PaginatedTransactionsResponse(BaseModel):

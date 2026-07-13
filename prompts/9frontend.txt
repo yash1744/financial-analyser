@@ -1,0 +1,36 @@
+Build a Next.js frontend for the existing FastAPI backend.
+
+Tech:
+
+- Next.js
+- TypeScript
+- Tailwind
+- React Query
+
+Pages:
+
+Dashboard
+
+Transactions
+
+Accounts
+
+Connect Bank
+
+Analytics
+
+Requirements:
+
+Reusable components
+
+API client
+
+Loading states
+
+Error handling
+
+Responsive layout
+
+Charts
+
+Simple modern design

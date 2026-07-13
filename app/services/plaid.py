@@ -120,6 +120,7 @@ class PlaidService:
         request_kwargs: dict[str, Any] = {}
         if self._settings.plaid_webhook_url:
             request_kwargs["webhook"] = self._settings.plaid_webhook_url
+        print("iam here")
         request = LinkTokenCreateRequest(
             client_name=self._settings.app_name,
             language="en",

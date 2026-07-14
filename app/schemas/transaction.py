@@ -5,7 +5,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.enums import TransactionType
+from app.models.enums import TransactionClassification, TransactionType
 
 
 class TransactionsSyncApiRequest(BaseModel):
@@ -43,6 +43,7 @@ class TransactionResponse(BaseModel):
     currency: str
     category_id: uuid.UUID | None
     transaction_type: TransactionType
+    classification: TransactionClassification
     pending: bool
     created_at: datetime
 

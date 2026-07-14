@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.enums import TransactionType, str_enum
+from app.models.enums import TransactionClassification, TransactionType, str_enum
 from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -55,6 +55,13 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     transaction_type: Mapped[TransactionType] = mapped_column(
         str_enum(TransactionType),
         nullable=False,
+    )
+    # Financial meaning (income/expense/transfer/fee/refund); 'unknown'
+    # default keeps pre-existing rows valid — the sync backfill upgrades them
+    classification: Mapped[TransactionClassification] = mapped_column(
+        str_enum(TransactionClassification),
+        nullable=False,
+        server_default=text("'unknown'"),
     )
     pending: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 

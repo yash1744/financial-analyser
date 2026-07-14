@@ -198,7 +198,9 @@ async def test_transaction_sync_flow():
                     )
                 ).scalars().one()
                 assert t1_row.category_id is not None  # categorized by sync
+                assert t1_row.classification == "expense"  # classified by sync
                 t1_row.category_id = None  # simulate pre-fix data
+                t1_row.classification = "unknown"
                 await session.commit()
 
             fake_plaid.script = [
@@ -236,13 +238,14 @@ async def test_transaction_sync_flow():
             assert t1.transaction_type == "debit"
             assert t1.transaction_date == date(2026, 7, 10)
 
-            # categorized (and re-categorized by the backfill in cycle 5):
-            # detailed "Coffee" under primary "Food and Drink"
+            # categorized + classified (and re-derived by the backfill in
+            # cycle 5): detailed "Coffee" under primary "Food and Drink"
             assert t1.category_id is not None
             coffee = await session.get(Category, t1.category_id)
             assert coffee.name == "Coffee"
             parent = await session.get(Category, coffee.parent_category_id)
             assert parent.name == "Food and Drink"
+            assert t1.classification == "expense"
 
             raws = {
                 r.plaid_transaction_id: r

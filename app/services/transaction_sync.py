@@ -26,7 +26,13 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import PlaidItemStatus, ProcessingStatus, SyncStatus, TransactionType
+from app.models.enums import (
+    PlaidItemStatus,
+    ProcessingStatus,
+    SyncStatus,
+    TransactionClassification,
+    TransactionType,
+)
 from app.models.plaid_item import PlaidItem
 from app.models.transaction import Transaction
 from app.repositories.account import AccountRepository
@@ -37,7 +43,7 @@ from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.schemas.transaction import ItemTransactionsSyncSummary
 from app.services.account_sync import AccountSyncService
-from app.services.categorization import CategoryResolver
+from app.services.categorization import CategoryResolver, classify
 from app.services.exceptions import (
     NotFoundError,
     PlaidItemLoginRequiredError,
@@ -120,13 +126,14 @@ class TransactionSyncService:
         removed = await self.transactions.delete_by_plaid_ids(
             [entry["transaction_id"] for entry in result.removed]
         )
-        # Self-heal rows synced before categorization existed (or whose
-        # payload lacked a category at the time) from the raw audit trail
-        recategorized = await self._backfill_categories(item)
-        if recategorized:
+        # Self-heal rows synced before categorization/classification
+        # existed (or whose payload lacked a category at the time) from
+        # the raw audit trail
+        enriched = await self._backfill_enrichment(item)
+        if enriched:
             logger.info(
-                "Backfilled categories for %d transactions on item %s",
-                recategorized,
+                "Backfilled category/classification for %d transactions on item %s",
+                enriched,
                 item.plaid_item_id,
             )
 
@@ -211,19 +218,29 @@ class TransactionSyncService:
 
         return added, modified, skipped
 
-    async def _backfill_categories(self, item: PlaidItem) -> int:
-        """Re-categorize the item's uncategorized transactions from their
-        stored raw payloads. Idempotent: rows whose payload has no
-        personal_finance_category simply stay uncategorized."""
-        recategorized = 0
-        for transaction, payload in await self.transactions.list_uncategorized_with_raw(
+    async def _backfill_enrichment(self, item: PlaidItem) -> int:
+        """Re-derive category and classification for the item's
+        unenriched transactions from their stored raw payloads.
+        Idempotent: rows whose payload has no personal_finance_category
+        simply stay uncategorized/unknown."""
+        enriched = 0
+        for transaction, payload in await self.transactions.list_unenriched_with_raw(
             item.id
         ):
-            category_id = await self.categorizer.resolve(payload)
-            if category_id is not None:
-                transaction.category_id = category_id
-                recategorized += 1
-        return recategorized
+            changed = False
+            if transaction.category_id is None:
+                category_id = await self.categorizer.resolve(payload)
+                if category_id is not None:
+                    transaction.category_id = category_id
+                    changed = True
+            if transaction.classification == TransactionClassification.UNKNOWN:
+                classification = classify(payload, transaction.amount)
+                if classification != TransactionClassification.UNKNOWN:
+                    transaction.classification = classification
+                    changed = True
+            if changed:
+                enriched += 1
+        return enriched
 
     @staticmethod
     def _normalized_fields(entry: dict[str, Any], account_id: uuid.UUID) -> dict[str, Any]:
@@ -238,6 +255,7 @@ class TransactionSyncService:
             "transaction_type": (
                 TransactionType.DEBIT if amount >= 0 else TransactionType.CREDIT
             ),
+            "classification": classify(entry, amount),
             "pending": bool(entry.get("pending", False)),
         }
 

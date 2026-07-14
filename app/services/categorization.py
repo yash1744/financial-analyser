@@ -10,13 +10,45 @@ consulted.)
 """
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import TransactionClassification
 from app.repositories.category import CategoryRepository
 
 _MINOR_WORDS = {"and", "or", "of", "the", "a", "an", "in", "to"}
+
+# Plaid primary codes with a fixed financial meaning. LOAN_PAYMENTS covers
+# credit card payments — money moving to another of the user's obligations,
+# so a transfer rather than fresh spending (per issue #3).
+_PRIMARY_CLASSIFICATION = {
+    "INCOME": TransactionClassification.INCOME,
+    "TRANSFER_IN": TransactionClassification.TRANSFER,
+    "TRANSFER_OUT": TransactionClassification.TRANSFER,
+    "LOAN_PAYMENTS": TransactionClassification.TRANSFER,
+    "BANK_FEES": TransactionClassification.FEE,
+}
+
+
+def classify(entry: dict[str, Any], amount: Decimal) -> TransactionClassification:
+    """Financial meaning of one Plaid payload.
+
+    Fixed-meaning primaries map directly; any other category is spending —
+    unless the money flows *in* (negative amount under Plaid's convention),
+    which against a spending category means a refund. No category → unknown.
+    """
+    pfc = entry.get("personal_finance_category") or {}
+    primary = pfc.get("primary")
+    if not primary:
+        return TransactionClassification.UNKNOWN
+    fixed = _PRIMARY_CLASSIFICATION.get(primary)
+    if fixed is not None:
+        return fixed
+    if amount < 0:
+        return TransactionClassification.REFUND
+    return TransactionClassification.EXPENSE
 
 
 def humanize_code(code: str) -> str:

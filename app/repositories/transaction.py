@@ -7,6 +7,7 @@ from sqlalchemy import Row, delete, func, select
 
 from app.models.account import Account
 from app.models.plaid_item import PlaidItem
+from app.models.raw_plaid_transaction import RawPlaidTransaction
 from app.models.transaction import Transaction
 from app.repositories.base import BaseRepository
 
@@ -125,6 +126,26 @@ class TransactionRepository(BaseRepository):
             .order_by(counted.c.merchant_name, counted.c.transaction_date)
         )
         return list(await self.session.execute(query))
+
+    async def list_uncategorized_with_raw(
+        self, plaid_item_id: uuid.UUID
+    ) -> list[tuple[Transaction, dict]]:
+        """An item's normalized transactions still missing a category,
+        paired with their verbatim Plaid payloads (for re-categorization)."""
+        result = await self.session.execute(
+            select(Transaction, RawPlaidTransaction.raw_payload)
+            .join(Account, Transaction.account_id == Account.id)
+            .join(
+                RawPlaidTransaction,
+                RawPlaidTransaction.plaid_transaction_id
+                == Transaction.plaid_transaction_id,
+            )
+            .where(
+                Account.plaid_item_id == plaid_item_id,
+                Transaction.category_id.is_(None),
+            )
+        )
+        return [(row[0], row[1]) for row in result.all()]
 
     async def delete_by_plaid_ids(self, ids: list[str]) -> int:
         """Delete normalized rows for Plaid-removed transactions; returns count."""

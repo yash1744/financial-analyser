@@ -3,9 +3,9 @@
 Personal finance application backend. The full Plaid pipeline works
 end-to-end: connect a bank via Link (encrypted access-token storage),
 sync accounts, and sync transactions (cursor-based, idempotent, raw
-payloads kept for reprocessing). An LLM chat backend answers questions
-about the synced data through tool calls (Anthropic or OpenAI).
-Auth and categorization land later.
+payloads kept for reprocessing, auto-categorized from Plaid's taxonomy).
+An LLM chat backend answers questions about the synced data through tool
+calls (Anthropic or OpenAI). Auth lands later.
 
 ## API
 
@@ -167,7 +167,12 @@ transaction:
 3. Land every added/modified payload verbatim in `raw_plaid_transactions`.
 4. Normalize into `transactions` — upsert keyed on `plaid_transaction_id`,
    `transaction_type` derived from the amount sign, floats →
-   `Decimal(str(v))`.
+   `Decimal(str(v))`, and `category_id` resolved from Plaid's
+   `personal_finance_category` (`app/services/categorization.py`: primary →
+   parent category, detailed suffix → child, rows get-or-created on first
+   sight). Every sync also re-categorizes the item's still-uncategorized
+   rows from their raw payloads, so data synced before categorization
+   existed heals itself.
 5. Delete normalized rows Plaid reports as `removed` (raw rows are kept as
    the audit trail).
 6. Save `next_cursor` + `last_synced_at`, mark the state `idle`, **commit**.

@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.api.deps import get_plaid_service, get_token_cipher
 from app.main import app
+from app.models.category import Category
 from app.models.plaid_item import PlaidItem
 from app.models.plaid_sync_state import PlaidSyncState
 from app.models.raw_plaid_transaction import RawPlaidTransaction
@@ -30,8 +31,15 @@ from app.services.exceptions import PlaidItemLoginRequiredError
 from app.utils.crypto import TokenCipher
 
 
-def txn(txn_id: str, account_id: str, amount: float, name: str, when: Any) -> dict[str, Any]:
-    return {
+def txn(
+    txn_id: str,
+    account_id: str,
+    amount: float,
+    name: str,
+    when: Any,
+    pfc: tuple[str, str] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "transaction_id": txn_id,
         "account_id": account_id,
         "amount": amount,
@@ -41,6 +49,17 @@ def txn(txn_id: str, account_id: str, amount: float, name: str, when: Any) -> di
         "iso_currency_code": "USD",
         "pending": False,
     }
+    if pfc is not None:
+        payload["personal_finance_category"] = {
+            "primary": pfc[0],
+            "detailed": pfc[1],
+            "confidence_level": "HIGH",
+            "version": "v2",
+        }
+    return payload
+
+
+STARBUCKS_PFC = ("FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE")
 
 
 class FakePlaidService:
@@ -103,11 +122,14 @@ async def test_transaction_sync_flow():
             assert resp.status_code == 201, resp.text
 
             # cycle 1: initial backfill; accounts never synced → auto-sync;
-            # t3 belongs to the unsynced loan account → raw kept, normalized skipped
+            # t3 belongs to the unsynced loan account → raw kept, normalized
+            # skipped. t1 carries a personal_finance_category; t2 doesn't
+            # (Plaid can omit it) and must stay uncategorized, not fail.
             fake_plaid.script = [
                 TransactionsSyncResult(
                     added=[
-                        txn("t1", "chk-1", 12.50, "Starbucks", date(2026, 7, 10)),
+                        txn("t1", "chk-1", 12.50, "Starbucks", date(2026, 7, 10),
+                            pfc=STARBUCKS_PFC),
                         txn("t2", "cc-1", -45.00, "Refund", "2026-07-11"),
                         txn("t3", "loan-1", 900.00, "Mortgage payment", "2026-07-11"),
                     ],
@@ -141,7 +163,8 @@ async def test_transaction_sync_flow():
             # cycle 3: t1 modified (new amount), t2 removed
             modify_step = TransactionsSyncResult(
                 added=[],
-                modified=[txn("t1", "chk-1", 15.00, "Starbucks Reserve", "2026-07-10")],
+                modified=[txn("t1", "chk-1", 15.00, "Starbucks Reserve", "2026-07-10",
+                              pfc=STARBUCKS_PFC)],
                 removed=[{"transaction_id": "t2", "account_id": "cc-1"}],
                 next_cursor="cur-3",
             )
@@ -162,7 +185,32 @@ async def test_transaction_sync_flow():
             summary = resp.json()["items"][0]
             assert (summary["added"], summary["modified"], summary["removed"]) == (0, 0, 0)
 
-            # cycle 5: Plaid demands re-auth
+            # cycle 5: the issue-#1 scenario — a transaction synced before
+            # categorization existed (category_id NULL, raw payload intact)
+            # must be backfilled from the raw audit trail by the next sync
+            from app.db.session import SessionFactory
+            from app.models.transaction import Transaction as Txn
+
+            async with SessionFactory() as session:
+                t1_row = (
+                    await session.execute(
+                        select(Txn).where(Txn.plaid_transaction_id == "t1")
+                    )
+                ).scalars().one()
+                assert t1_row.category_id is not None  # categorized by sync
+                t1_row.category_id = None  # simulate pre-fix data
+                await session.commit()
+
+            fake_plaid.script = [
+                TransactionsSyncResult(added=[], modified=[], removed=[],
+                                       next_cursor="cur-4")
+            ]
+            resp = await client.post(
+                "/api/v1/transactions/sync", json={"user_id": user_id}
+            )
+            assert resp.status_code == 200
+
+            # cycle 6: Plaid demands re-auth
             fake_plaid.script = [
                 PlaidItemLoginRequiredError(
                     "reconnect", error_code="ITEM_LOGIN_REQUIRED", error_type="ITEM_ERROR"
@@ -188,6 +236,14 @@ async def test_transaction_sync_flow():
             assert t1.transaction_type == "debit"
             assert t1.transaction_date == date(2026, 7, 10)
 
+            # categorized (and re-categorized by the backfill in cycle 5):
+            # detailed "Coffee" under primary "Food and Drink"
+            assert t1.category_id is not None
+            coffee = await session.get(Category, t1.category_id)
+            assert coffee.name == "Coffee"
+            parent = await session.get(Category, coffee.parent_category_id)
+            assert parent.name == "Food and Drink"
+
             raws = {
                 r.plaid_transaction_id: r
                 for r in (await session.execute(select(RawPlaidTransaction))).scalars()
@@ -206,7 +262,7 @@ async def test_transaction_sync_flow():
                     .where(PlaidItem.plaid_item_id == "item-txsync-1")
                 )
             ).scalars().one()
-            assert state.cursor == "cur-3"  # failed cycle 5 did not advance it
+            assert state.cursor == "cur-4"  # failed cycle 6 did not advance it
             assert state.sync_status == "error"
             assert state.last_synced_at is not None
 

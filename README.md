@@ -167,12 +167,16 @@ transaction:
 3. Land every added/modified payload verbatim in `raw_plaid_transactions`.
 4. Normalize into `transactions` — upsert keyed on `plaid_transaction_id`,
    `transaction_type` derived from the amount sign, floats →
-   `Decimal(str(v))`, and `category_id` resolved from Plaid's
-   `personal_finance_category` (`app/services/categorization.py`: primary →
-   parent category, detailed suffix → child, rows get-or-created on first
-   sight). Every sync also re-categorizes the item's still-uncategorized
-   rows from their raw payloads, so data synced before categorization
-   existed heals itself.
+   `Decimal(str(v))`, and two enrichments from Plaid's
+   `personal_finance_category` (`app/services/categorization.py`):
+   `category_id` (primary → parent category, detailed suffix → child, rows
+   get-or-created on first sight) and `classification` — the financial
+   meaning beyond debit/credit: `income`, `expense`, `transfer` (incl.
+   credit-card payments via `LOAN_PAYMENTS`), `fee`, `refund` (money in
+   against a spending category), or `unknown` when Plaid sent no category.
+   Every sync also re-derives both for the item's still-unenriched rows
+   from their raw payloads, so data synced before these features existed
+   heals itself.
 5. Delete normalized rows Plaid reports as `removed` (raw rows are kept as
    the audit trail).
 6. Save `next_cursor` + `last_synced_at`, mark the state `idle`, **commit**.

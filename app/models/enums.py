@@ -46,6 +46,21 @@ class TransactionType(enum.StrEnum):
     CREDIT = "credit"
 
 
+class TransactionClassification(enum.StrEnum):
+    """Financial meaning of a transaction, beyond the debit/credit sign.
+
+    Derived from Plaid's personal_finance_category + amount sign in
+    app/services/categorization.py.
+    """
+
+    INCOME = "income"  # salary, interest, deposits
+    EXPENSE = "expense"  # purchases, bills, subscriptions
+    TRANSFER = "transfer"  # between own accounts, credit card payments
+    FEE = "fee"  # bank/ATM/service charges
+    REFUND = "refund"  # money back against an expense category
+    UNKNOWN = "unknown"  # no category data to decide from
+
+
 class MessageRole(enum.StrEnum):
     USER = "user"
     ASSISTANT = "assistant"

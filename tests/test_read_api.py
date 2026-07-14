@@ -144,8 +144,10 @@ async def test_read_apis():
             assert set(body["items"][0]) == {
                 "id", "account_id", "plaid_transaction_id", "transaction_date",
                 "merchant_name", "amount", "currency", "category_id",
-                "transaction_type", "pending", "created_at",
+                "transaction_type", "classification", "pending", "created_at",
             }
+            # rows created without an explicit classification default to it
+            assert body["items"][0]["classification"] == "unknown"
 
             # date range filter (inclusive both ends)
             resp = await client.get("/api/v1/transactions", params={

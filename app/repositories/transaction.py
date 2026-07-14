@@ -6,6 +6,7 @@ from itertools import batched
 from sqlalchemy import Row, delete, func, select
 
 from app.models.account import Account
+from app.models.enums import TransactionClassification
 from app.models.plaid_item import PlaidItem
 from app.models.raw_plaid_transaction import RawPlaidTransaction
 from app.models.transaction import Transaction
@@ -127,11 +128,12 @@ class TransactionRepository(BaseRepository):
         )
         return list(await self.session.execute(query))
 
-    async def list_uncategorized_with_raw(
+    async def list_unenriched_with_raw(
         self, plaid_item_id: uuid.UUID
     ) -> list[tuple[Transaction, dict]]:
-        """An item's normalized transactions still missing a category,
-        paired with their verbatim Plaid payloads (for re-categorization)."""
+        """An item's normalized transactions still missing a category or a
+        classification, paired with their verbatim Plaid payloads (for
+        re-derivation)."""
         result = await self.session.execute(
             select(Transaction, RawPlaidTransaction.raw_payload)
             .join(Account, Transaction.account_id == Account.id)
@@ -142,7 +144,8 @@ class TransactionRepository(BaseRepository):
             )
             .where(
                 Account.plaid_item_id == plaid_item_id,
-                Transaction.category_id.is_(None),
+                Transaction.category_id.is_(None)
+                | (Transaction.classification == TransactionClassification.UNKNOWN),
             )
         )
         return [(row[0], row[1]) for row in result.all()]

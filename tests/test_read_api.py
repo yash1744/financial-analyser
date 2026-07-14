@@ -20,8 +20,15 @@ from app.schemas.plaid import (
 from app.utils.crypto import TokenCipher
 
 
-def txn(txn_id: str, account_id: str, amount: float, name: str, when: str) -> dict[str, Any]:
-    return {
+def txn(
+    txn_id: str,
+    account_id: str,
+    amount: float,
+    name: str,
+    when: str,
+    pfc: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "transaction_id": txn_id,
         "account_id": account_id,
         "amount": amount,
@@ -31,6 +38,9 @@ def txn(txn_id: str, account_id: str, amount: float, name: str, when: str) -> di
         "iso_currency_code": "USD",
         "pending": False,
     }
+    if pfc is not None:
+        payload["personal_finance_category"] = {"primary": pfc, "detailed": pfc}
+    return payload
 
 
 class FakePlaidService:
@@ -90,9 +100,13 @@ async def test_read_apis():
             )
             fake_plaid.sync_result = TransactionsSyncResult(
                 added=[
-                    txn("t1", "chk-1", 10.00, "Alpha Coffee", "2026-07-01"),
+                    # t1 → expense, t3 (money in, spending category) → refund;
+                    # the rest have no category data → unknown
+                    txn("t1", "chk-1", 10.00, "Alpha Coffee", "2026-07-01",
+                        pfc="FOOD_AND_DRINK"),
                     txn("t2", "chk-1", 25.50, "Beta Grocers", "2026-07-05"),
-                    txn("t3", "cc-1", -40.00, "Gamma Refund", "2026-07-08"),
+                    txn("t3", "cc-1", -40.00, "Gamma Refund", "2026-07-08",
+                        pfc="GENERAL_MERCHANDISE"),
                     txn("t4", "cc-1", 99.99, "Delta Air", "2026-07-10"),
                     txn("t5", "chk-1", 5.00, "Epsilon Snacks", "2026-06-15"),
                 ],
@@ -176,6 +190,26 @@ async def test_read_apis():
                 "user_id": user_id, "category_id": str(category_id),
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
+
+            # classification filter
+            resp = await client.get("/api/v1/transactions", params={
+                "user_id": user_id, "classification": "expense",
+            })
+            assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
+            resp = await client.get("/api/v1/transactions", params={
+                "user_id": user_id, "classification": "refund",
+            })
+            assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t3"]
+            # combines with other filters
+            resp = await client.get("/api/v1/transactions", params={
+                "user_id": user_id, "classification": "unknown", "account_id": chk_id,
+            })
+            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t2", "t5"}
+            # invalid value is rejected by schema validation
+            resp = await client.get("/api/v1/transactions", params={
+                "user_id": user_id, "classification": "bogus",
+            })
+            assert resp.status_code == 422
 
             # sorting
             resp = await client.get("/api/v1/transactions", params={

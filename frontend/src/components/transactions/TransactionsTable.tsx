@@ -3,8 +3,25 @@
 import { useMemo } from "react";
 
 import { Badge } from "@/components/ui/Badge";
-import type { Account, Category, Transaction } from "@/lib/api/types";
+import type {
+  Account,
+  Category,
+  Transaction,
+  TransactionClassification,
+} from "@/lib/api/types";
 import { formatDate, formatMoney, toNumber } from "@/lib/format";
+
+const CLASSIFICATION_TONES: Record<
+  TransactionClassification,
+  "neutral" | "good" | "warn" | "bad"
+> = {
+  income: "good",
+  refund: "good",
+  fee: "bad",
+  expense: "neutral",
+  transfer: "neutral",
+  unknown: "neutral",
+};
 
 export function TransactionsTable({
   transactions,
@@ -39,6 +56,7 @@ export function TransactionsTable({
             <th className="hidden px-3 py-3 font-medium md:table-cell">
               Category
             </th>
+            <th className="px-3 py-3 font-medium">Type</th>
             <th className="hidden px-3 py-3 font-medium lg:table-cell">
               Account
             </th>
@@ -61,6 +79,11 @@ export function TransactionsTable({
                   {t.category_id
                     ? (categoryById.get(t.category_id)?.name ?? "—")
                     : "Uncategorized"}
+                </td>
+                <td className="px-3 py-3">
+                  <Badge tone={CLASSIFICATION_TONES[t.classification]}>
+                    {t.classification}
+                  </Badge>
                 </td>
                 <td className="hidden max-w-[12rem] truncate px-3 py-3 text-ink-2 lg:table-cell">
                   {accountById.get(t.account_id)?.name ?? "—"}

@@ -8,12 +8,14 @@ import type {
   Account,
   Category,
   SortDir,
+  TransactionClassification,
   TransactionSortBy,
 } from "@/lib/api/types";
 
 export interface Filters {
   account_id: string;
   category_id: string;
+  classification: TransactionClassification | "";
   start_date: string;
   end_date: string;
   min_amount: string;
@@ -21,6 +23,15 @@ export interface Filters {
   sort_by: TransactionSortBy;
   sort_dir: SortDir;
 }
+
+const CLASSIFICATIONS: { value: TransactionClassification; label: string }[] = [
+  { value: "income", label: "Income" },
+  { value: "expense", label: "Expense" },
+  { value: "transfer", label: "Transfer" },
+  { value: "fee", label: "Fee" },
+  { value: "refund", label: "Refund" },
+  { value: "unknown", label: "Unknown" },
+];
 
 export function TransactionFilters({
   value,
@@ -77,6 +88,24 @@ export function TransactionFilters({
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Type">
+        <Select
+          value={draft.classification}
+          onChange={(e) =>
+            set(
+              "classification",
+              e.target.value as TransactionClassification | "",
+            )
+          }
+        >
+          <option value="">All</option>
+          {CLASSIFICATIONS.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </Select>

@@ -47,6 +47,7 @@ class TransactionRepository(BaseRepository):
         user_id: uuid.UUID,
         account_id: uuid.UUID | None = None,
         category_id: uuid.UUID | None = None,
+        classification: TransactionClassification | None = None,
         merchant: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -63,6 +64,8 @@ class TransactionRepository(BaseRepository):
             conditions.append(Transaction.account_id == account_id)
         if category_id is not None:
             conditions.append(Transaction.category_id == category_id)
+        if classification is not None:
+            conditions.append(Transaction.classification == classification)
         if merchant is not None:
             conditions.append(
                 Transaction.merchant_name.ilike(f"%{_escape_like(merchant)}%")

@@ -18,6 +18,7 @@ const PAGE_SIZE = 25;
 const emptyFilters: Filters = {
   account_id: "",
   category_id: "",
+  classification: "",
   start_date: "",
   end_date: "",
   min_amount: "",
@@ -39,6 +40,7 @@ export default function TransactionsPage() {
       user_id: user.id,
       account_id: filters.account_id || undefined,
       category_id: filters.category_id || undefined,
+      classification: filters.classification || undefined,
       start_date: filters.start_date || undefined,
       end_date: filters.end_date || undefined,
       min_amount: filters.min_amount || undefined,

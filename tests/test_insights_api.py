@@ -26,6 +26,7 @@ from app.schemas.plaid import (
     TransactionsSyncResult,
 )
 from app.utils.crypto import TokenCipher
+from tests.conftest import register_user
 
 TODAY = date.today()
 
@@ -96,25 +97,22 @@ async def test_insights_apis_and_llm_tools():
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/api/v1/users",
-                json={"email": f"insights-{uuid.uuid4().hex[:12]}@example.com"},
-            )
-            user_id = resp.json()["id"]
+            headers, user_id = await register_user(client)
             await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "p1"},
+                json={"public_token": "p1"},
+                headers=headers,
             )
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             assert resp.json()["items"][0]["added"] == len(SEED)
 
             # --- spending-summary (explicit range covering everything) ---
             resp = await client.get(
                 "/api/v1/insights/spending-summary",
-                params={
-                    "user_id": user_id,
+                headers=headers,
+                    params={
                     "start_date": days_ago(120),
                     "end_date": TODAY.isoformat(),
                 },
@@ -136,8 +134,8 @@ async def test_insights_apis_and_llm_tools():
             # empty range → zeros, no averages
             resp = await client.get(
                 "/api/v1/insights/spending-summary",
-                params={
-                    "user_id": user_id,
+                headers=headers,
+                    params={
                     "start_date": (TODAY + timedelta(days=30)).isoformat(),
                     "end_date": (TODAY + timedelta(days=30)).isoformat(),
                 },
@@ -151,8 +149,8 @@ async def test_insights_apis_and_llm_tools():
             # --- compare-spending (explicit periods) ---
             resp = await client.get(
                 "/api/v1/insights/compare-spending",
-                params={
-                    "user_id": user_id,
+                headers=headers,
+                    params={
                     "baseline_start": days_ago(60),
                     "baseline_end": days_ago(31),
                     "comparison_start": days_ago(30),
@@ -174,7 +172,7 @@ async def test_insights_apis_and_llm_tools():
 
             # default (no dates): previous full month vs current month to date
             resp = await client.get(
-                "/api/v1/insights/compare-spending", params={"user_id": user_id}
+                "/api/v1/insights/compare-spending", headers=headers
             )
             body = resp.json()
             prev_month_start = (
@@ -186,14 +184,14 @@ async def test_insights_apis_and_llm_tools():
             # partial period spec is rejected
             resp = await client.get(
                 "/api/v1/insights/compare-spending",
-                params={"user_id": user_id, "baseline_start": days_ago(60)},
+                headers=headers, params={"baseline_start": days_ago(60)},
             )
             assert resp.status_code == 422
 
             # --- recurring-transactions ---
             resp = await client.get(
                 "/api/v1/insights/recurring-transactions",
-                params={"user_id": user_id},
+                headers=headers,
             )
             assert resp.status_code == 200, resp.text
             items = resp.json()["items"]
@@ -212,7 +210,7 @@ async def test_insights_apis_and_llm_tools():
             # --- transaction search: merchant text filter ---
             resp = await client.get(
                 "/api/v1/transactions",
-                params={"user_id": user_id, "merchant": "net"},
+                headers=headers, params={"merchant": "net"},
             )
             body = resp.json()
             assert body["total"] == 4

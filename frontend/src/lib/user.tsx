@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * The backend has no auth yet — user_id rides in every request. This store
- * holds the demo user (created via POST /users) persisted in localStorage,
- * exposed to React via useSyncExternalStore.
+ * Auth session store: JWT + user info persisted in localStorage, exposed
+ * to React via useSyncExternalStore. The token rides every API request as
+ * an Authorization header (see lib/api/client.ts); a 401 clears the
+ * session, which re-renders the login gate.
  */
 
 import {
@@ -14,11 +15,17 @@ import {
   type ReactNode,
 } from "react";
 
-const STORAGE_KEY = "finance.user";
+const STORAGE_KEY = "finance.session";
+const LEGACY_KEY = "finance.user"; // pre-auth store; cleared on load
 
 export interface StoredUser {
   id: string;
   email: string;
+}
+
+export interface Session {
+  token: string;
+  user: StoredUser;
 }
 
 // --- localStorage-backed external store ---
@@ -40,35 +47,49 @@ function subscribe(listener: () => void) {
 
 // Cache the parsed value so getSnapshot returns a stable reference
 let cachedRaw: string | null = null;
-let cachedUser: StoredUser | null = null;
+let cachedSession: Session | null = null;
 
-function getSnapshot(): StoredUser | null {
+function getSnapshot(): Session | null {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === cachedRaw) return cachedUser;
+  if (raw === cachedRaw) return cachedSession;
   cachedRaw = raw;
-  cachedUser = null;
+  cachedSession = null;
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as StoredUser;
-      if (parsed.id && parsed.email) cachedUser = parsed;
+      const parsed = JSON.parse(raw) as Session;
+      if (parsed.token && parsed.user?.id && parsed.user?.email) {
+        cachedSession = parsed;
+      }
     } catch {
       // corrupted storage — treat as signed out
     }
   }
-  return cachedUser;
+  return cachedSession;
 }
 
-function getServerSnapshot(): StoredUser | null {
+function getServerSnapshot(): Session | null {
   return null;
 }
 
-function setStoredUser(user: StoredUser | null) {
-  if (user) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+export function setSession(session: Session | null) {
+  if (session) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   } else {
     localStorage.removeItem(STORAGE_KEY);
   }
+  localStorage.removeItem(LEGACY_KEY);
   emit();
+}
+
+/** Token for the api client (non-React access). */
+export function getSessionToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return getSnapshot()?.token ?? null;
+}
+
+/** Called by the api client when the backend rejects the token. */
+export function clearSession() {
+  setSession(null);
 }
 
 // --- context ---
@@ -77,14 +98,14 @@ interface UserContextValue {
   user: StoredUser | null;
   /** false during SSR/hydration, before localStorage has been read */
   ready: boolean;
-  setUser: (user: StoredUser) => void;
+  setSession: (session: Session) => void;
   clearUser: () => void;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const user = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const session = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   // false on the server render, true once hydrated on the client
   const ready = useSyncExternalStore(
     subscribe,
@@ -94,12 +115,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      user,
+      user: session?.user ?? null,
       ready,
-      setUser: setStoredUser,
-      clearUser: () => setStoredUser(null),
+      setSession,
+      clearUser: () => setSession(null),
     }),
-    [user, ready],
+    [session, ready],
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

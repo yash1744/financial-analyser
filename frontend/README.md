@@ -27,9 +27,11 @@ npm run dev        # http://localhost:3000
 `next.config.ts` proxies `/api/v1/*` to the backend (no CORS needed). Point it
 elsewhere with `BACKEND_URL=http://host:port npm run dev`.
 
-There is no auth yet — on first load the app asks for an email, creates a user
-via `POST /api/v1/users`, and keeps `{id, email}` in localStorage
-(`finance.user`). "Switch user" in the sidebar clears it.
+On first load the app shows a login/register gate. The backend returns a
+JWT which is kept with the user info in localStorage (`finance.session`)
+and sent as an `Authorization: Bearer` header on every request; a 401
+clears the session and returns to the gate. "Switch user" in the sidebar
+signs out.
 
 In Plaid sandbox, banks accept the test credentials `user_good` / `pass_good`.
 
@@ -44,13 +46,13 @@ src/
     charts/           # Recharts wrappers + HTML BarList; chartTheme.tsx = shared chrome
     transactions/     # filter form + table
     assistant/        # chat UI: window, bubbles, markdown, tool trail, suggestions
-    UserGate.tsx      # blocks the app until a demo user exists
+    UserGate.tsx      # login/register gate; blocks the app until signed in
   lib/
     api/              # client.ts (fetch + ApiError), endpoints.ts, types.ts,
                       #   assistant.ts (chat + SSE stream parser)
     hooks.ts          # React Query hooks + query keys
     useAssistantChat.ts  # chat transcript reducer + streaming orchestration
-    user.tsx          # localStorage-backed user store
+    user.tsx          # localStorage-backed auth session store (JWT + user)
     format.ts         # money/date formatting (backend Decimals arrive as strings)
 ```
 

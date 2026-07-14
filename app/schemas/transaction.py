@@ -9,8 +9,6 @@ from app.models.enums import TransactionClassification, TransactionType
 
 
 class TransactionsSyncApiRequest(BaseModel):
-    # user_id moves to the auth context once authentication lands
-    user_id: uuid.UUID
     # Sync one connected item, or every item the user has when omitted
     item_id: uuid.UUID | None = None
 
@@ -84,9 +82,7 @@ class TransactionSearchParams(BaseModel):
 
 
 class TransactionListQuery(TransactionSearchParams):
-    """GET /transactions query parameters."""
-
-    user_id: uuid.UUID  # moves to the auth context once authentication lands
+    """GET /transactions query parameters (the user comes from auth)."""
 
 
 class PaginatedTransactionsResponse(BaseModel):

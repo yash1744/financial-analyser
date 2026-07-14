@@ -29,6 +29,7 @@ from app.schemas.plaid import (
 )
 from app.services.exceptions import PlaidItemLoginRequiredError
 from app.utils.crypto import TokenCipher
+from tests.conftest import register_user
 
 
 def txn(
@@ -110,14 +111,11 @@ async def test_transaction_sync_flow():
     user_id: str | None = None
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/api/v1/users",
-                json={"email": f"tx-sync-{uuid.uuid4().hex[:12]}@example.com"},
-            )
-            user_id = resp.json()["id"]
+            headers, user_id = await register_user(client)
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-1"},
+                json={"public_token": "public-1"},
+                headers=headers,
             )
             assert resp.status_code == 201, resp.text
 
@@ -139,7 +137,7 @@ async def test_transaction_sync_flow():
                 )
             ]
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             assert resp.status_code == 200, resp.text
             summary = resp.json()["items"][0]
@@ -154,7 +152,7 @@ async def test_transaction_sync_flow():
                                        next_cursor="cur-2")
             ]
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             summary = resp.json()["items"][0]
             assert (summary["added"], summary["modified"], summary["removed"]) == (0, 0, 0)
@@ -170,7 +168,7 @@ async def test_transaction_sync_flow():
             )
             fake_plaid.script = [modify_step]
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             summary = resp.json()["items"][0]
             assert summary["modified"] == 1
@@ -180,7 +178,7 @@ async def test_transaction_sync_flow():
             # (as after a crash before the cursor commit); must converge
             fake_plaid.script = [modify_step.model_copy(deep=True)]
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             summary = resp.json()["items"][0]
             assert (summary["added"], summary["modified"], summary["removed"]) == (0, 0, 0)
@@ -208,7 +206,7 @@ async def test_transaction_sync_flow():
                                        next_cursor="cur-4")
             ]
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             assert resp.status_code == 200
 
@@ -219,7 +217,7 @@ async def test_transaction_sync_flow():
                 )
             ]
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             assert resp.status_code == 409
 

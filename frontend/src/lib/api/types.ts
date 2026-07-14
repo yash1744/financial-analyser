@@ -1,11 +1,17 @@
 /** TypeScript mirrors of the backend's Pydantic schemas (app/schemas/). */
 
-// --- users ---
+// --- auth ---
 
 export interface User {
   id: string;
   email: string;
   created_at: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
 }
 
 // --- accounts ---
@@ -66,7 +72,6 @@ export type TransactionSortBy = "transaction_date" | "amount" | "merchant_name";
 export type SortDir = "asc" | "desc";
 
 export interface TransactionListParams {
-  user_id: string;
   account_id?: string;
   category_id?: string;
   classification?: TransactionClassification;

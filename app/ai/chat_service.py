@@ -49,9 +49,9 @@ class ChatService:
         toolset = build_finance_toolset(self.session, user_id)
         return FinanceAgent(llm=self.llm, tools=ToolRegistry(toolset))
 
-    async def chat(self, request: ChatRequest) -> ChatResponse:
-        conversation, history = await self._prepare(request)
-        agent = self._build_agent(request.user_id)
+    async def chat(self, user_id: uuid.UUID, request: ChatRequest) -> ChatResponse:
+        conversation, history = await self._prepare(user_id, request)
+        agent = self._build_agent(user_id)
         result = await agent.run(history, request.message)
         await self._persist(conversation, result)
         return ChatResponse(
@@ -60,11 +60,13 @@ class ChatService:
             tool_calls=_summaries(result),
         )
 
-    async def chat_stream(self, request: ChatRequest) -> AsyncIterator[AgentEvent]:
+    async def chat_stream(
+        self, user_id: uuid.UUID, request: ChatRequest
+    ) -> AsyncIterator[AgentEvent]:
         """Yields token/tool events live, then a final done event (after
         the run has been persisted)."""
-        conversation, history = await self._prepare(request)
-        agent = self._build_agent(request.user_id)
+        conversation, history = await self._prepare(user_id, request)
+        agent = self._build_agent(user_id)
         async for item in agent.run_stream(history, request.message):
             if isinstance(item, AgentRunResult):
                 await self._persist(conversation, item)
@@ -79,17 +81,17 @@ class ChatService:
     # --- internals ---
 
     async def _prepare(
-        self, request: ChatRequest
+        self, user_id: uuid.UUID, request: ChatRequest
     ) -> tuple[Conversation, list[ChatMessage]]:
-        if await self.users.get(request.user_id) is None:
-            raise NotFoundError(f"user {request.user_id} does not exist")
+        if await self.users.get(user_id) is None:
+            raise NotFoundError(f"user {user_id} does not exist")
 
         if request.conversation_id is None:
-            conversation = await self.conversations.create(request.user_id)
+            conversation = await self.conversations.create(user_id)
             return conversation, []
 
         conversation = await self.conversations.get_for_user(
-            request.conversation_id, request.user_id
+            request.conversation_id, user_id
         )
         if conversation is None:
             raise NotFoundError(

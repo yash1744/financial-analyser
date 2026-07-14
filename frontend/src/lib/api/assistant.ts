@@ -7,7 +7,9 @@
  * so callers have exactly one error path.
  */
 
-import { apiPost } from "./client";
+import { clearSession } from "@/lib/user";
+
+import { apiPost, authHeaders } from "./client";
 
 export type ToolStatus = "running" | "completed" | "failed";
 
@@ -18,7 +20,6 @@ export interface ToolCallSummary {
 }
 
 export interface ChatRequest {
-  user_id: string;
   conversation_id?: string | null;
   message: string;
 }
@@ -86,7 +87,7 @@ export async function streamMessage(
   try {
     response = await fetch("/api/v1/ai/chat/stream", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(request),
       signal,
     });
@@ -95,6 +96,11 @@ export async function streamMessage(
       callbacks.onError("Cannot reach the API. Is the backend running?");
     }
     return;
+  }
+
+  if (response.status === 401) {
+    // expired/invalid token: same behavior as the JSON client
+    clearSession();
   }
 
   if (!response.ok || !response.body) {

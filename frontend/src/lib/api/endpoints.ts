@@ -1,9 +1,11 @@
-/** Typed functions for every backend endpoint. */
+/** Typed functions for every backend endpoint. The authenticated user is
+ * identified by the Bearer token — no user_id parameters. */
 
 import { apiGet, apiPost } from "./client";
 import type {
   Account,
   AccountsSyncResponse,
+  AuthResponse,
   Category,
   CategoryBreakdownResponse,
   LinkTokenResponse,
@@ -14,35 +16,32 @@ import type {
   TopMerchantsResponse,
   TransactionListParams,
   TransactionsSyncResponse,
-  User,
 } from "./types";
 
 export const api = {
-  createUser: (email: string) => apiPost<User>("/users", { email }),
+  register: (email: string, password: string) =>
+    apiPost<AuthResponse>("/auth/register", { email, password }),
 
-  createLinkToken: (userId: string) =>
-    apiPost<LinkTokenResponse>("/plaid/link-token", { user_id: userId }),
+  login: (email: string, password: string) =>
+    apiPost<AuthResponse>("/auth/login", { email, password }),
 
-  exchangePublicToken: (userId: string, publicToken: string) =>
-    apiPost<PlaidItem>("/plaid/exchange-token", {
-      user_id: userId,
-      public_token: publicToken,
-    }),
+  createLinkToken: () => apiPost<LinkTokenResponse>("/plaid/link-token", {}),
 
-  syncAccounts: (userId: string, itemId?: string) =>
+  exchangePublicToken: (publicToken: string) =>
+    apiPost<PlaidItem>("/plaid/exchange-token", { public_token: publicToken }),
+
+  syncAccounts: (itemId?: string) =>
     apiPost<AccountsSyncResponse>("/plaid/accounts/sync", {
-      user_id: userId,
       item_id: itemId ?? null,
     }),
 
-  syncTransactions: (userId: string, itemId?: string) =>
+  syncTransactions: (itemId?: string) =>
     apiPost<TransactionsSyncResponse>("/transactions/sync", {
-      user_id: userId,
       item_id: itemId ?? null,
     }),
 
-  listAccounts: (userId: string, itemId?: string) =>
-    apiGet<Account[]>("/accounts", { user_id: userId, item_id: itemId }),
+  listAccounts: (itemId?: string) =>
+    apiGet<Account[]>("/accounts", { item_id: itemId }),
 
   listTransactions: (params: TransactionListParams) =>
     apiGet<PaginatedTransactions>("/transactions", { ...params }),
@@ -50,35 +49,16 @@ export const api = {
   listCategories: () => apiGet<Category[]>("/categories"),
 
   monthlySpending: (
-    userId: string,
     opts: { start_date?: string; end_date?: string; account_id?: string } = {},
-  ) =>
-    apiGet<MonthlySpendingResponse>("/analytics/monthly-spending", {
-      user_id: userId,
-      ...opts,
-    }),
+  ) => apiGet<MonthlySpendingResponse>("/analytics/monthly-spending", opts),
 
-  categoryBreakdown: (
-    userId: string,
-    opts: { start_date?: string; end_date?: string } = {},
-  ) =>
-    apiGet<CategoryBreakdownResponse>("/analytics/category-breakdown", {
-      user_id: userId,
-      ...opts,
-    }),
+  categoryBreakdown: (opts: { start_date?: string; end_date?: string } = {}) =>
+    apiGet<CategoryBreakdownResponse>("/analytics/category-breakdown", opts),
 
   topMerchants: (
-    userId: string,
     opts: { start_date?: string; end_date?: string; limit?: number } = {},
-  ) =>
-    apiGet<TopMerchantsResponse>("/analytics/top-merchants", {
-      user_id: userId,
-      ...opts,
-    }),
+  ) => apiGet<TopMerchantsResponse>("/analytics/top-merchants", opts),
 
-  monthOverMonth: (userId: string, months?: number) =>
-    apiGet<MonthOverMonthResponse>("/analytics/month-over-month", {
-      user_id: userId,
-      months,
-    }),
+  monthOverMonth: (months?: number) =>
+    apiGet<MonthOverMonthResponse>("/analytics/month-over-month", { months }),
 };

@@ -13,6 +13,10 @@ class ConflictError(Exception):
     """The request contradicts existing state. Maps to HTTP 409."""
 
 
+class AuthenticationError(Exception):
+    """Missing/invalid credentials or token. Maps to HTTP 401."""
+
+
 class PlaidConfigurationError(Exception):
     """Plaid credentials are missing or invalid at client-build time."""
 

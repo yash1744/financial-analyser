@@ -17,6 +17,7 @@ from app.models.plaid_item import PlaidItem
 from app.models.user import User
 from app.schemas.plaid import AccountsSnapshot, ExchangedPublicToken, LinkTokenResult
 from app.utils.crypto import TokenCipher
+from tests.conftest import register_user
 
 
 class FakePlaidService:
@@ -72,17 +73,14 @@ async def test_duplicate_institution_link():
     user_id: str | None = None
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/api/v1/users",
-                json={"email": f"dup-link-{uuid.uuid4().hex[:12]}@example.com"},
-            )
-            user_id = resp.json()["id"]
+            headers, user_id = await register_user(client)
 
             fake_plaid.next_item_id = "item-dup-1"
             fake_plaid.institution = ("ins_dup", "Duplicate Bank")
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-1"},
+                json={"public_token": "public-1"},
+                headers=headers,
             )
             assert resp.status_code == 201
             first_item_id = resp.json()["id"]
@@ -93,7 +91,8 @@ async def test_duplicate_institution_link():
             fake_plaid.remove_raises = True
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-2"},
+                json={"public_token": "public-2"},
+                headers=headers,
             )
             assert resp.status_code == 409
             assert "Duplicate Bank is already connected" in resp.json()["detail"]
@@ -104,7 +103,8 @@ async def test_duplicate_institution_link():
             fake_plaid.institution = ("ins_other", "Other Bank")
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-3"},
+                json={"public_token": "public-3"},
+                headers=headers,
             )
             assert resp.status_code == 201
 
@@ -133,7 +133,8 @@ async def test_duplicate_institution_link():
             fake_plaid.institution = ("ins_dup", "Duplicate Bank")
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-4"},
+                json={"public_token": "public-4"},
+                headers=headers,
             )
             assert resp.status_code == 201
             assert resp.json()["status"] == "active"
@@ -163,47 +164,31 @@ async def test_full_link_flow():
     app.dependency_overrides[get_plaid_service] = lambda: fake_plaid
     app.dependency_overrides[get_token_cipher] = lambda: cipher
 
-    email = f"link-flow-{uuid.uuid4().hex[:12]}@example.com"
     transport = ASGITransport(app=app)
     created_user_ids: list[str] = []
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            # create a user to link against
-            resp = await client.post("/api/v1/users", json={"email": email})
-            assert resp.status_code == 201, resp.text
-            user_id = resp.json()["id"]
+            headers, user_id = await register_user(client)
             created_user_ids.append(user_id)
 
-            # duplicate email is rejected
-            resp = await client.post("/api/v1/users", json={"email": email.upper()})
-            assert resp.status_code == 409
-
-            # invalid email is rejected by schema validation
-            resp = await client.post("/api/v1/users", json={"email": "not-an-email"})
-            assert resp.status_code == 422
-
-            # step 1: link token
-            resp = await client.post("/api/v1/plaid/link-token", json={"user_id": user_id})
+            # step 1: link token (scoped to the token's user)
+            resp = await client.post("/api/v1/plaid/link-token", headers=headers)
             assert resp.status_code == 200, resp.text
             assert resp.json()["link_token"].startswith("link-sandbox-")
-
-            # link token for a nonexistent user → 404
-            resp = await client.post(
-                "/api/v1/plaid/link-token", json={"user_id": str(uuid.uuid4())}
-            )
-            assert resp.status_code == 404
 
             # empty public_token fails validation
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": ""},
+                json={"public_token": ""},
+                headers=headers,
             )
             assert resp.status_code == 422
 
             # step 2: exchange and persist
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-sandbox-123"},
+                json={"public_token": "public-sandbox-123"},
+                headers=headers,
             )
             assert resp.status_code == 201, resp.text
             body = resp.json()
@@ -215,20 +200,19 @@ async def test_full_link_flow():
             # re-linking the same item for the same user updates in place
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-sandbox-456"},
+                json={"public_token": "public-sandbox-456"},
+                headers=headers,
             )
             assert resp.status_code == 201
             assert resp.json()["id"] == body["id"]
 
             # the same item claimed by a different user → 409
-            resp = await client.post(
-                "/api/v1/users", json={"email": f"other-{uuid.uuid4().hex[:12]}@example.com"}
-            )
-            other_user_id = resp.json()["id"]
+            headers_other, other_user_id = await register_user(client)
             created_user_ids.append(other_user_id)
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": other_user_id, "public_token": "public-sandbox-789"},
+                json={"public_token": "public-sandbox-789"},
+                headers=headers_other,
             )
             assert resp.status_code == 409
 

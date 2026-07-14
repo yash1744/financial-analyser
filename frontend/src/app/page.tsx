@@ -24,8 +24,7 @@ export default function DashboardPage() {
 
   const accounts = useAccounts(user.id);
   const monthly = useMonthlySpending(user.id, { start_date: monthStart(5) });
-  const recent = useTransactions({
-    user_id: user.id,
+  const recent = useTransactions(user.id, {
     page: 1,
     page_size: 8,
   });

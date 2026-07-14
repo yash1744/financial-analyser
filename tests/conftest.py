@@ -1,8 +1,27 @@
+import uuid
+
 import pytest
+from httpx import AsyncClient
 from sqlalchemy import delete
 
 from app.db.session import SessionFactory, engine
 from app.models.plaid_item import PlaidItem
+
+TEST_PASSWORD = "test-password-123"  # noqa: S105 — test fixture credential
+
+
+async def register_user(
+    client: AsyncClient, email: str | None = None
+) -> tuple[dict[str, str], str]:
+    """Register a fresh user; returns (auth headers, user_id)."""
+    email = email or f"t-{uuid.uuid4().hex[:12]}@example.com"
+    resp = await client.post(
+        "/api/v1/auth/register", json={"email": email, "password": TEST_PASSWORD}
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    headers = {"Authorization": f"Bearer {body['access_token']}"}
+    return headers, body["user"]["id"]
 
 
 @pytest.fixture(autouse=True)

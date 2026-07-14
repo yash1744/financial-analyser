@@ -40,8 +40,6 @@ class SpendingSummaryParams(BaseModel):
         return self
 
 
-class SpendingSummaryQuery(SpendingSummaryParams):
-    user_id: uuid.UUID  # moves to the auth context once authentication lands
 
 
 class TopEntry(BaseModel):
@@ -94,8 +92,6 @@ class CompareSpendingParams(BaseModel):
         return self
 
 
-class CompareSpendingQuery(CompareSpendingParams):
-    user_id: uuid.UUID
 
 
 class PeriodTotals(BaseModel):
@@ -135,8 +131,6 @@ class RecurringTransactionsParams(BaseModel):
     )
 
 
-class RecurringTransactionsQuery(RecurringTransactionsParams):
-    user_id: uuid.UUID
 
 
 Cadence = Literal["weekly", "biweekly", "monthly", "quarterly", "yearly"]

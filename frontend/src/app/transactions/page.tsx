@@ -37,7 +37,6 @@ export default function TransactionsPage() {
 
   const params = useMemo(
     () => ({
-      user_id: user.id,
       account_id: filters.account_id || undefined,
       category_id: filters.category_id || undefined,
       classification: filters.classification || undefined,
@@ -50,10 +49,10 @@ export default function TransactionsPage() {
       page,
       page_size: PAGE_SIZE,
     }),
-    [user.id, filters, page],
+    [filters, page],
   );
 
-  const transactions = useTransactions(params);
+  const transactions = useTransactions(user.id, params);
 
   const applyFilters = (next: Filters) => {
     setFilters(next);

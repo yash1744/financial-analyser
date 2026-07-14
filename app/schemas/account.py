@@ -18,8 +18,6 @@ class AccountResponse(BaseModel):
 
 
 class AccountsSyncRequest(BaseModel):
-    # user_id moves to the auth context once authentication lands
-    user_id: uuid.UUID
     # Sync one connected item, or every item the user has when omitted
     item_id: uuid.UUID | None = None
 

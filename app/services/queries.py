@@ -51,6 +51,7 @@ class TransactionQueryService:
             user_id=query.user_id,
             account_id=query.account_id,
             category_id=query.category_id,
+            classification=query.classification,
             merchant=query.merchant,
             start_date=query.start_date,
             end_date=query.end_date,

@@ -54,6 +54,7 @@ class TransactionSearchParams(BaseModel):
 
     account_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
+    classification: TransactionClassification | None = None
     merchant: str | None = Field(
         default=None,
         min_length=1,

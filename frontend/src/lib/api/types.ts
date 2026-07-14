@@ -39,6 +39,14 @@ export interface AccountsSyncResponse {
 
 export type TransactionType = "debit" | "credit";
 
+export type TransactionClassification =
+  | "income"
+  | "expense"
+  | "transfer"
+  | "fee"
+  | "refund"
+  | "unknown";
+
 export interface Transaction {
   id: string;
   account_id: string;
@@ -49,6 +57,7 @@ export interface Transaction {
   currency: string;
   category_id: string | null;
   transaction_type: TransactionType;
+  classification: TransactionClassification;
   pending: boolean;
   created_at: string;
 }
@@ -60,6 +69,7 @@ export interface TransactionListParams {
   user_id: string;
   account_id?: string;
   category_id?: string;
+  classification?: TransactionClassification;
   start_date?: string;
   end_date?: string;
   min_amount?: string;

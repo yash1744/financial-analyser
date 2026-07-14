@@ -20,7 +20,7 @@ import { Spinner } from "./ui/Spinner";
 type Mode = "login" | "register";
 
 function AuthForm() {
-  const { setSession } = useUser();
+  const { setProfile } = useUser();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,11 +30,9 @@ function AuthForm() {
       mode === "login"
         ? api.login(email.trim(), password)
         : api.register(email.trim(), password),
+    // the token arrives as an httpOnly cookie; only the profile is stored
     onSuccess: (auth) =>
-      setSession({
-        token: auth.access_token,
-        user: { id: auth.user.id, email: auth.user.email },
-      }),
+      setProfile({ id: auth.user.id, email: auth.user.email }),
   });
 
   const handleSubmit = (e: FormEvent) => {

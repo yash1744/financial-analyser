@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * Auth session store: JWT + user info persisted in localStorage, exposed
- * to React via useSyncExternalStore. The token rides every API request as
- * an Authorization header (see lib/api/client.ts); a 401 clears the
- * session, which re-renders the login gate.
+ * Signed-in user profile store. The JWT itself lives in an httpOnly
+ * cookie set by the backend — JavaScript can never read it; the browser
+ * attaches it to same-origin requests automatically. localStorage holds
+ * only the non-sensitive profile (id + email) for display and cache
+ * keying. A 401 from the API clears the profile, which re-renders the
+ * login gate.
  */
 
 import {
@@ -15,17 +17,13 @@ import {
   type ReactNode,
 } from "react";
 
-const STORAGE_KEY = "finance.session";
-const LEGACY_KEY = "finance.user"; // pre-auth store; cleared on load
+const STORAGE_KEY = "finance.profile";
+// pre-cookie stores; cleared on any write so stale tokens don't linger
+const LEGACY_KEYS = ["finance.user", "finance.session"];
 
 export interface StoredUser {
   id: string;
   email: string;
-}
-
-export interface Session {
-  token: string;
-  user: StoredUser;
 }
 
 // --- localStorage-backed external store ---
@@ -47,49 +45,41 @@ function subscribe(listener: () => void) {
 
 // Cache the parsed value so getSnapshot returns a stable reference
 let cachedRaw: string | null = null;
-let cachedSession: Session | null = null;
+let cachedUser: StoredUser | null = null;
 
-function getSnapshot(): Session | null {
+function getSnapshot(): StoredUser | null {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === cachedRaw) return cachedSession;
+  if (raw === cachedRaw) return cachedUser;
   cachedRaw = raw;
-  cachedSession = null;
+  cachedUser = null;
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as Session;
-      if (parsed.token && parsed.user?.id && parsed.user?.email) {
-        cachedSession = parsed;
-      }
+      const parsed = JSON.parse(raw) as StoredUser;
+      if (parsed.id && parsed.email) cachedUser = parsed;
     } catch {
       // corrupted storage — treat as signed out
     }
   }
-  return cachedSession;
+  return cachedUser;
 }
 
-function getServerSnapshot(): Session | null {
+function getServerSnapshot(): StoredUser | null {
   return null;
 }
 
-export function setSession(session: Session | null) {
-  if (session) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+export function setProfile(user: StoredUser | null) {
+  if (user) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   } else {
     localStorage.removeItem(STORAGE_KEY);
   }
-  localStorage.removeItem(LEGACY_KEY);
+  LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
   emit();
 }
 
-/** Token for the api client (non-React access). */
-export function getSessionToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return getSnapshot()?.token ?? null;
-}
-
-/** Called by the api client when the backend rejects the token. */
+/** Called by the api client when the backend rejects the cookie/token. */
 export function clearSession() {
-  setSession(null);
+  setProfile(null);
 }
 
 // --- context ---
@@ -98,14 +88,14 @@ interface UserContextValue {
   user: StoredUser | null;
   /** false during SSR/hydration, before localStorage has been read */
   ready: boolean;
-  setSession: (session: Session) => void;
+  setProfile: (user: StoredUser) => void;
   clearUser: () => void;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const session = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const user = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   // false on the server render, true once hydrated on the client
   const ready = useSyncExternalStore(
     subscribe,
@@ -115,12 +105,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      user: session?.user ?? null,
+      user,
       ready,
-      setSession,
-      clearUser: () => setSession(null),
+      setProfile,
+      clearUser: () => setProfile(null),
     }),
-    [session, ready],
+    [user, ready],
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

@@ -25,6 +25,8 @@ export const api = {
   login: (email: string, password: string) =>
     apiPost<AuthResponse>("/auth/login", { email, password }),
 
+  logout: () => apiPost<void>("/auth/logout", {}),
+
   createLinkToken: () => apiPost<LinkTokenResponse>("/plaid/link-token", {}),
 
   exchangePublicToken: (publicToken: string) =>

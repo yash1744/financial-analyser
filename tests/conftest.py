@@ -20,6 +20,9 @@ async def register_user(
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
+    # registration also sets the httpOnly auth cookie; drop it so tests
+    # authenticate explicitly via headers (anonymous 401 asserts stay valid)
+    client.cookies.clear()
     headers = {"Authorization": f"Bearer {body['access_token']}"}
     return headers, body["user"]["id"]
 

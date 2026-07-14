@@ -27,11 +27,12 @@ npm run dev        # http://localhost:3000
 `next.config.ts` proxies `/api/v1/*` to the backend (no CORS needed). Point it
 elsewhere with `BACKEND_URL=http://host:port npm run dev`.
 
-On first load the app shows a login/register gate. The backend returns a
-JWT which is kept with the user info in localStorage (`finance.session`)
-and sent as an `Authorization: Bearer` header on every request; a 401
-clears the session and returns to the gate. "Switch user" in the sidebar
-signs out.
+On first load the app shows a login/register gate. The JWT lives in an
+httpOnly cookie set by the backend — JavaScript never sees it; the
+browser attaches it to every same-origin request automatically.
+localStorage (`finance.profile`) holds only the id/email for display.
+A 401 clears the profile and returns to the gate; "Sign out" calls
+`/auth/logout` to clear the cookie.
 
 In Plaid sandbox, banks accept the test credentials `user_good` / `pass_good`.
 
@@ -52,7 +53,7 @@ src/
                       #   assistant.ts (chat + SSE stream parser)
     hooks.ts          # React Query hooks + query keys
     useAssistantChat.ts  # chat transcript reducer + streaming orchestration
-    user.tsx          # localStorage-backed auth session store (JWT + user)
+    user.tsx          # profile store (JWT stays in an httpOnly cookie)
     format.ts         # money/date formatting (backend Decimals arrive as strings)
 ```
 

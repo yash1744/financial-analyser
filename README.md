@@ -15,6 +15,7 @@ and all data access is scoped to the authenticated user.
 | GET | `/api/v1/health` | Liveness + DB check (public) |
 | POST | `/api/v1/auth/register` | Create an account (email + password) → JWT |
 | POST | `/api/v1/auth/login` | Sign in → JWT |
+| POST | `/api/v1/auth/logout` | Clear the auth cookie |
 | GET | `/api/v1/auth/me` | The authenticated user |
 | POST | `/api/v1/plaid/link-token` | Start the Link flow for a user |
 | POST | `/api/v1/plaid/exchange-token` | Exchange `public_token`, persist the connection |
@@ -34,13 +35,19 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/ai/chat/stream` | Same, streamed as SSE (`token` / `tool` / `done` events) |
 
 Interactive docs at <http://localhost:8000/docs>. Every endpoint except
-`/health` and `/auth/*` requires `Authorization: Bearer <token>`.
+`/health` and `/auth/*` requires authentication — the httpOnly auth
+cookie (browser) or `Authorization: Bearer <token>` (API clients).
 
 ## Authentication & authorization
 
-`POST /auth/register` and `/auth/login` return a stateless HS256 JWT
+`POST /auth/register` and `/auth/login` issue a stateless HS256 JWT
 (`JWT_SECRET_KEY` in `.env`; an insecure dev default applies when unset,
-expiry via `JWT_EXPIRY_HOURS`). Passwords are bcrypt-hashed
+expiry via `JWT_EXPIRY_HOURS`). The token is delivered two ways at once:
+an **httpOnly `SameSite=Lax` cookie** (what the browser app uses — JS can
+never read it, so XSS can't exfiltrate the credential, and Lax covers
+CSRF) and the response body (for API clients that send it back as
+`Authorization: Bearer`; the header wins when both are present).
+`POST /auth/logout` clears the cookie. Passwords are bcrypt-hashed
 (`app/services/auth.py`); login returns the same 401 for a wrong password
 and an unknown email so email existence can't be probed. The
 `CurrentUserDep` dependency (`app/api/deps.py`) validates the token on
@@ -114,8 +121,9 @@ app/
   services/          # business logic: plaid.py (Plaid gateway),
                      #   plaid_link.py (Link flow), account_sync.py,
                      #   transaction_sync.py (write side), queries.py
-                     #   (read side), user.py, exceptions.py (typed
-                     #   errors → HTTP mapping lives in api/errors.py)
+                     #   (read side), auth.py (passwords + JWTs),
+                     #   exceptions.py (typed errors → HTTP mapping
+                     #   lives in api/errors.py)
   repositories/      # all DB access; only layer that touches the session
   schemas/           # Pydantic request/response contracts + PlaidService results
   models/            # SQLAlchemy ORM models (one module per table)

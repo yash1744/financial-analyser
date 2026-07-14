@@ -9,7 +9,7 @@
 
 import { clearSession } from "@/lib/user";
 
-import { apiPost, authHeaders } from "./client";
+import { apiPost } from "./client";
 
 export type ToolStatus = "running" | "completed" | "failed";
 
@@ -85,9 +85,10 @@ export async function streamMessage(
 ): Promise<void> {
   let response: Response;
   try {
+    // the httpOnly auth cookie rides automatically (same-origin fetch)
     response = await fetch("/api/v1/ai/chat/stream", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
       signal,
     });

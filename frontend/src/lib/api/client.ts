@@ -1,15 +1,11 @@
 /** Thin fetch wrapper for the FastAPI backend (proxied via Next rewrites).
- * Attaches the session's Bearer token; a 401 clears the session so the
- * login gate takes over. */
+ * Auth rides an httpOnly cookie the browser attaches automatically
+ * (same-origin); a 401 clears the stored profile so the login gate takes
+ * over. */
 
-import { clearSession, getSessionToken } from "@/lib/user";
+import { clearSession } from "@/lib/user";
 
 const API_BASE = "/api/v1";
-
-export function authHeaders(): Record<string, string> {
-  const token = getSessionToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -64,20 +60,20 @@ async function parseError(response: Response): Promise<ApiError> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: { ...authHeaders(), ...init?.headers },
-    });
+    response = await fetch(`${API_BASE}${path}`, init);
   } catch {
     throw new ApiError(0, "Cannot reach the API. Is the backend running?");
   }
   if (!response.ok) {
-    // expired/invalid token: drop the session so the login gate renders
+    // expired/invalid cookie: drop the profile so the login gate renders
     // (auth endpoints themselves 401 on bad credentials — no session to drop)
     if (response.status === 401 && !path.startsWith("/auth/")) {
       clearSession();
     }
     throw await parseError(response);
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json() as Promise<T>;
 }

@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Annotated
 
 from anthropic import AsyncAnthropic
-from fastapi import Depends
+from fastapi import Cookie, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from openai import AsyncOpenAI
 from plaid.api import plaid_api
@@ -55,13 +55,17 @@ _bearer = HTTPBearer(auto_error=False)
 async def get_current_user(
     auth: AuthServiceDep,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    access_token: Annotated[str | None, Cookie()] = None,
 ) -> User:
     """The authenticated user for this request. Every protected route
     scopes its data to this user — client-supplied user ids are never
-    trusted."""
-    if credentials is None:
+    trusted. The token arrives either as an Authorization: Bearer header
+    (API clients) or as the httpOnly cookie set at login (the browser
+    app); the explicit header wins when both are present."""
+    token = credentials.credentials if credentials else access_token
+    if not token:
         raise AuthenticationError("not authenticated")
-    return await auth.user_from_token(credentials.credentials)
+    return await auth.user_from_token(token)
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]

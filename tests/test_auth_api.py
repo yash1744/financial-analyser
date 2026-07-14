@@ -72,6 +72,41 @@ async def test_register_login_me():
             await session.commit()
 
 
+async def test_cookie_authentication_and_logout():
+    """The browser flow: the token rides an httpOnly cookie — requests
+    work with no Authorization header, and logout clears the cookie."""
+    transport = ASGITransport(app=app)
+    email = f"cookie-{uuid.uuid4().hex[:12]}@example.com"
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/v1/auth/register", json={"email": email, "password": TEST_PASSWORD}
+        )
+        assert resp.status_code == 201
+        user_id = resp.json()["user"]["id"]
+        cookie = resp.headers.get("set-cookie", "")
+        assert "access_token=" in cookie
+        assert "HttpOnly" in cookie
+        assert "SameSite=lax" in cookie.lower() or "samesite=lax" in cookie.lower()
+
+        # no Authorization header — the client's cookie jar carries auth
+        resp = await client.get("/api/v1/auth/me")
+        assert resp.status_code == 200
+        assert resp.json()["email"] == email
+        resp = await client.get("/api/v1/transactions")
+        assert resp.status_code == 200
+
+        # logout clears the cookie; subsequent requests are anonymous
+        resp = await client.post("/api/v1/auth/logout")
+        assert resp.status_code == 204
+        resp = await client.get("/api/v1/auth/me")
+        assert resp.status_code == 401
+
+    async with SessionFactory() as session:
+        user = await session.get(User, uuid.UUID(user_id))
+        await session.delete(user)
+        await session.commit()
+
+
 async def test_protected_endpoints_require_valid_token():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

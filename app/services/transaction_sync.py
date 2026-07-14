@@ -37,6 +37,7 @@ from app.repositories.transaction import TransactionRepository
 from app.repositories.user import UserRepository
 from app.schemas.transaction import ItemTransactionsSyncSummary
 from app.services.account_sync import AccountSyncService
+from app.services.categorization import CategoryResolver
 from app.services.exceptions import (
     NotFoundError,
     PlaidItemLoginRequiredError,
@@ -69,6 +70,7 @@ class TransactionSyncService:
         self.raws = RawPlaidTransactionRepository(session)
         self.transactions = TransactionRepository(session)
         self.account_sync = AccountSyncService(session, plaid, cipher)
+        self.categorizer = CategoryResolver(session)
 
     async def sync_transactions(
         self, user_id: uuid.UUID, item_id: uuid.UUID | None = None
@@ -118,6 +120,15 @@ class TransactionSyncService:
         removed = await self.transactions.delete_by_plaid_ids(
             [entry["transaction_id"] for entry in result.removed]
         )
+        # Self-heal rows synced before categorization existed (or whose
+        # payload lacked a category at the time) from the raw audit trail
+        recategorized = await self._backfill_categories(item)
+        if recategorized:
+            logger.info(
+                "Backfilled categories for %d transactions on item %s",
+                recategorized,
+                item.plaid_item_id,
+            )
 
         now = datetime.now(UTC)
         state.cursor = result.next_cursor
@@ -184,6 +195,7 @@ class TransactionSyncService:
                 continue
 
             fields = self._normalized_fields(entry, account.id)
+            fields["category_id"] = await self.categorizer.resolve(entry)
             transaction = tx_by_id.get(plaid_txn_id)
             if transaction is None:
                 transaction = Transaction(plaid_transaction_id=plaid_txn_id, **fields)
@@ -198,6 +210,20 @@ class TransactionSyncService:
             raw.processed_at = now
 
         return added, modified, skipped
+
+    async def _backfill_categories(self, item: PlaidItem) -> int:
+        """Re-categorize the item's uncategorized transactions from their
+        stored raw payloads. Idempotent: rows whose payload has no
+        personal_finance_category simply stay uncategorized."""
+        recategorized = 0
+        for transaction, payload in await self.transactions.list_uncategorized_with_raw(
+            item.id
+        ):
+            category_id = await self.categorizer.resolve(payload)
+            if category_id is not None:
+                transaction.category_id = category_id
+                recategorized += 1
+        return recategorized
 
     @staticmethod
     def _normalized_fields(entry: dict[str, Any], account_id: uuid.UUID) -> dict[str, Any]:

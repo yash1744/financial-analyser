@@ -48,9 +48,13 @@ class PlaidLinkService:
     async def exchange_public_token(self, user_id: uuid.UUID, public_token: str) -> PlaidItem:
         """Exchange Link's public_token and persist the connected item.
 
-        Re-linking an institution the user already connected updates the
-        stored token in place (Plaid keeps the same item_id); an item
-        connected by a different user is rejected.
+        Update-mode re-links (Plaid keeps the same item_id) update the
+        stored token in place; an item connected by a different user is
+        rejected. A *fresh* Link session for an institution the user
+        already has an active connection to is rejected too — Plaid mints
+        a new item_id per session (in production as much as in sandbox),
+        so without this check every re-link would duplicate the bank and
+        its transactions.
         """
         user = await self._require_user(user_id)
 
@@ -72,6 +76,9 @@ class PlaidLinkService:
             item.status = PlaidItemStatus.ACTIVE
             logger.info("Re-linked plaid item %s for user %s", exchanged.item_id, user.id)
         else:
+            await self._reject_duplicate_institution(
+                user, exchanged.access_token, institution_id, institution_name
+            )
             item = await self.items.create(
                 user_id=user.id,
                 plaid_item_id=exchanged.item_id,
@@ -84,3 +91,39 @@ class PlaidLinkService:
         await self.session.commit()
         await self.session.refresh(item)
         return item
+
+    async def _reject_duplicate_institution(
+        self,
+        user: User,
+        new_access_token: str,
+        institution_id: str | None,
+        institution_name: str | None,
+    ) -> None:
+        """409 when the user already has an active item for this
+        institution. Broken connections (login_required/error/disconnected)
+        don't block: a fresh link is the recovery path — the stale item is
+        retired so it stops being synced."""
+        if not institution_id:
+            return
+        same_bank = await self.items.list_by_user_and_institution(
+            user.id, institution_id
+        )
+        if any(i.status == PlaidItemStatus.ACTIVE for i in same_bank):
+            # Release the just-created Plaid item so it doesn't linger
+            # (and bill) — best-effort, the rejection stands regardless
+            try:
+                await self.plaid.remove_item(new_access_token)
+            except Exception:
+                logger.warning(
+                    "could not remove duplicate plaid item at Plaid", exc_info=True
+                )
+            raise ConflictError(
+                f"{institution_name or 'This bank'} is already connected"
+            )
+        for stale in same_bank:
+            if stale.status != PlaidItemStatus.DISCONNECTED:
+                stale.status = PlaidItemStatus.DISCONNECTED
+                logger.info(
+                    "Retiring stale plaid item %s (replaced by a fresh link)",
+                    stale.plaid_item_id,
+                )

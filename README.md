@@ -128,9 +128,17 @@ Authentication flow (orchestrated by `PlaidLinkService`):
 2. Link's `onSuccess` returns a one-time **public_token** (low-value, safe
    in the browser).
 3. `POST /plaid/exchange-token` → permanent **access_token** + `item_id`,
-   encrypted with `TokenCipher` and stored on `plaid_items`. Re-linking the
-   same institution updates the stored token in place; an item already
-   connected by another user is rejected (409). The access token is never
+   encrypted with `TokenCipher` and stored on `plaid_items`. Update-mode
+   re-links (same `item_id`) update the stored token in place; an item
+   already connected by another user is rejected (409). A fresh Link
+   session for an institution the user already has an **active** item for
+   is rejected (409, "X is already connected") — Plaid mints a new
+   `item_id` per session, so this is the only place duplicates can be
+   caught; the just-created orphan item is released at Plaid
+   (best-effort `/item/remove`). If the existing connection is broken
+   (`login_required` etc.), the fresh link is allowed as the recovery
+   path and the stale item is retired to `disconnected` — retired items
+   are skipped by the all-items sync paths. The access token is never
    returned by any endpoint.
 4. If Plaid later demands re-auth, calls fail with 409 /
    `ITEM_LOGIN_REQUIRED` and the item is flagged `login_required`; the user

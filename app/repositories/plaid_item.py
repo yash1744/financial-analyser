@@ -23,6 +23,19 @@ class PlaidItemRepository(BaseRepository):
         )
         return list(result.scalars())
 
+    async def list_by_user_and_institution(
+        self, user_id: uuid.UUID, institution_id: str
+    ) -> list[PlaidItem]:
+        result = await self.session.execute(
+            select(PlaidItem)
+            .where(
+                PlaidItem.user_id == user_id,
+                PlaidItem.institution_id == institution_id,
+            )
+            .order_by(PlaidItem.created_at)
+        )
+        return list(result.scalars())
+
     async def create(
         self,
         *,

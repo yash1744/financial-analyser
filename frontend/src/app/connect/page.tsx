@@ -10,6 +10,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Spinner } from "@/components/ui/Spinner";
 import { api } from "@/lib/api/endpoints";
+import { ApiError } from "@/lib/api/client";
 import type { TransactionsSyncResponse } from "@/lib/api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRequiredUser } from "@/lib/user";
@@ -21,6 +22,7 @@ type Step =
   | { name: "exchanging" }
   | { name: "syncing"; institution: string | null }
   | { name: "done"; institution: string | null; added: number }
+  | { name: "already-connected"; message: string }
   | { name: "error"; error: unknown };
 
 /** Mounts only once we have a token; opens Plaid Link as soon as it's ready. */
@@ -82,7 +84,12 @@ export default function ConnectPage() {
           added: txns.items.reduce((n, i) => n + i.added, 0),
         });
       } catch (error) {
-        setStep({ name: "error", error });
+        // duplicate connection: expected outcome, not a failure
+        if (error instanceof ApiError && error.status === 409) {
+          setStep({ name: "already-connected", message: error.detail });
+        } else {
+          setStep({ name: "error", error });
+        }
       }
     },
     [user.id, queryClient],
@@ -128,6 +135,23 @@ export default function ConnectPage() {
                 </Link>
                 <Button variant="secondary" onClick={start}>
                   Connect another
+                </Button>
+              </div>
+            </div>
+          ) : step.name === "already-connected" ? (
+            <div className="space-y-4 py-2 text-center">
+              <p className="text-sm text-ink">{step.message}.</p>
+              <p className="text-xs text-ink-3">
+                No duplicate was created — your existing connection and its
+                transactions are untouched. Use sync on the Accounts page to
+                refresh its data.
+              </p>
+              <div className="flex justify-center gap-2">
+                <Link href="/accounts">
+                  <Button>View accounts</Button>
+                </Link>
+                <Button variant="secondary" onClick={start}>
+                  Connect a different bank
                 </Button>
               </div>
             </div>

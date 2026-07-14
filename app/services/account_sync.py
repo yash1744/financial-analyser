@@ -54,7 +54,13 @@ class AccountSyncService:
                 raise NotFoundError(f"plaid item {item_id} does not exist for this user")
             items = [item]
         else:
-            items = await self.items.list_for_user(user_id)
+            # retired connections (replaced re-links) are dead tokens —
+            # syncing them can only fail
+            items = [
+                item
+                for item in await self.items.list_for_user(user_id)
+                if item.status != PlaidItemStatus.DISCONNECTED
+            ]
 
         summaries = [await self.sync_item(item) for item in items]
         await self.session.commit()

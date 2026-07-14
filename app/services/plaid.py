@@ -21,6 +21,7 @@ from plaid.exceptions import ApiException
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.country_code import CountryCode
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
+from plaid.model.item_remove_request import ItemRemoveRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.products import Products
@@ -120,7 +121,6 @@ class PlaidService:
         request_kwargs: dict[str, Any] = {}
         if self._settings.plaid_webhook_url:
             request_kwargs["webhook"] = self._settings.plaid_webhook_url
-        print("iam here")
         request = LinkTokenCreateRequest(
             client_name=self._settings.app_name,
             language="en",
@@ -147,6 +147,15 @@ class PlaidService:
         request = AccountsGetRequest(access_token=access_token)
         data = await self._call(self._client.accounts_get, request)
         return AccountsSnapshot(accounts=data["accounts"], item=data["item"])
+
+    async def remove_item(self, access_token: str) -> None:
+        """Delete an item at Plaid (it stops syncing and stops billing).
+
+        Used to release an item we decided not to keep — e.g. a duplicate
+        connection rejected right after the token exchange.
+        """
+        request = ItemRemoveRequest(access_token=access_token)
+        await self._call(self._client.item_remove, request)
 
     async def sync_transactions(
         self, access_token: str, cursor: str | None = None

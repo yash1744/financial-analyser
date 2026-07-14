@@ -1,0 +1,229 @@
+**Frontend
+
+I want to add a new "AI Assistant" tab/page for my personal finance application.
+
+Backend is already implemented.
+
+Backend endpoint:
+
+POST /ai/chat
+
+Request:
+
+{
+  "conversation_id": optional,
+  "message": string
+}
+
+
+Response:
+
+{
+  "message": string,
+  "tool_calls": [
+    {
+      "name": string,
+      "status": string,
+      "duration_ms": optional
+    }
+  ],
+  "conversation_id": string
+}
+
+
+Streaming endpoint:
+
+POST /ai/chat/stream
+
+Uses Server Sent Events (SSE).
+
+Events:
+
+token:
+{
+  "content": "partial assistant response"
+}
+
+tool:
+{
+  "name": "get_spending_summary",
+  "status": "running|completed"
+}
+
+done:
+{
+  "conversation_id": "..."
+}
+
+
+Create an AI Assistant page integrated into the existing navigation.
+
+## Requirements
+
+### Page
+
+Create:
+
+/assistant
+
+The page should contain:
+
+1. Chat conversation area
+2. Message history
+3. User messages
+4. Assistant messages
+5. Input box at bottom
+6. Send button
+7. Loading state
+8. Streaming response support
+
+
+### Chat Experience
+
+Similar to ChatGPT.
+
+Support:
+
+- Markdown rendering
+- Paragraphs
+- Bullet points
+- Tables
+- Highlight financial numbers
+- Auto scroll to latest message
+
+
+### Suggested Questions
+
+Show initial suggestion cards:
+
+Examples:
+
+"How much did I spend this month?"
+
+"Compare my spending with last month"
+
+"What are my recurring subscriptions?"
+
+"Where am I spending the most money?"
+
+"Show my biggest transactions"
+
+
+Clicking a suggestion should send it as a user message.
+
+
+### Tool Execution UI
+
+When backend sends tool_calls, show an expandable component.
+
+Example:
+
+Assistant:
+
+"You spent $1200 this month."
+
+Below:
+
+--------------------------------
+Tools used
+
+✓ get_spending_summary
+
+Completed in 120ms
+--------------------------------
+
+
+Do not expose:
+- SQL
+- Database details
+- Internal implementation
+
+
+### State Management
+
+Use:
+
+- React Query for API communication
+- Zustand or React state for chat state
+
+Manage:
+
+- messages
+- conversation_id
+- streaming state
+- loading state
+
+
+### API Layer
+
+Create a separate API client:
+
+Example:
+
+src/api/assistant.ts
+
+Functions:
+
+- sendMessage()
+- streamMessage()
+
+
+Do not call fetch directly inside components.
+
+
+### Components
+
+Create reusable components:
+
+components/assistant/
+
+- AssistantPage
+- ChatWindow
+- MessageList
+- MessageBubble
+- UserMessage
+- AssistantMessage
+- ChatInput
+- SuggestedPrompts
+- ToolExecutionCard
+- StreamingIndicator
+
+
+### Styling
+
+Use existing application styling.
+
+Use:
+- TypeScript
+- Tailwind CSS
+- Existing UI component library if available
+
+
+### Error Handling
+
+Handle:
+
+- Network errors
+- Backend errors
+- Streaming disconnects
+- Empty messages
+
+
+### Future Ready
+
+Keep the design extensible for:
+
+- charts inside responses
+- financial summary cards
+- transaction tables
+- voice input
+- file upload
+
+
+Before writing code:
+
+Explain:
+1. Where the new files will be created.
+2. How the chat data flow works.
+3. How SSE streaming will be handled.
+4. How this integrates with the existing frontend architecture.

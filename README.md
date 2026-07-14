@@ -40,8 +40,9 @@ Python 3.13 · FastAPI · PostgreSQL 17 · SQLAlchemy 2 (async) · Alembic · Py
 ## Frontend
 
 `frontend/` holds a Next.js + TypeScript + Tailwind + React Query UI
-(dashboard, transactions, accounts, Plaid Link connect flow, analytics).
-It proxies `/api/v1/*` to this backend — see `frontend/README.md`.
+(dashboard, transactions, accounts, Plaid Link connect flow, analytics,
+AI assistant chat with SSE streaming). It proxies `/api/v1/*` to this
+backend — see `frontend/README.md`.
 
 ```bash
 cd frontend && npm install && npm run dev   # http://localhost:3000

@@ -6,6 +6,7 @@ calculations — those live behind the tools.
 """
 
 import logging
+import time
 from collections.abc import AsyncIterator
 
 from pydantic import BaseModel
@@ -117,10 +118,12 @@ class FinanceAgent:
                 running = ToolEvent(name=call.name, status="running")
                 if stream:
                     yield running
+                started = time.perf_counter()
                 execution = await self._execute(call)
                 done = ToolEvent(
                     name=call.name,
                     status="failed" if execution.is_error else "completed",
+                    duration_ms=int((time.perf_counter() - started) * 1000),
                 )
                 tool_events.append(done)
                 if stream:

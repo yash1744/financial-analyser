@@ -13,6 +13,7 @@ Next.js frontend for the FastAPI backend in the repository root.
 | `/accounts` | Synced accounts with balances + manual sync |
 | `/connect` | Plaid Link flow: link token → Link UI → exchange → auto-sync |
 | `/analytics` | Monthly spending/income, month-over-month trend, category breakdown, top merchants |
+| `/assistant` | AI chat over your finances — streamed SSE answers, markdown, tool audit trail |
 
 ## Running
 
@@ -42,10 +43,13 @@ src/
     ui/               # Card, Button, StatTile, Badge, Skeleton, ErrorState, …
     charts/           # Recharts wrappers + HTML BarList; chartTheme.tsx = shared chrome
     transactions/     # filter form + table
+    assistant/        # chat UI: window, bubbles, markdown, tool trail, suggestions
     UserGate.tsx      # blocks the app until a demo user exists
   lib/
-    api/              # client.ts (fetch + ApiError), endpoints.ts, types.ts
+    api/              # client.ts (fetch + ApiError), endpoints.ts, types.ts,
+                      #   assistant.ts (chat + SSE stream parser)
     hooks.ts          # React Query hooks + query keys
+    useAssistantChat.ts  # chat transcript reducer + streaming orchestration
     user.tsx          # localStorage-backed user store
     format.ts         # money/date formatting (backend Decimals arrive as strings)
 ```

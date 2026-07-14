@@ -113,9 +113,10 @@ async def test_chat_tool_loop_and_persistence():
             assert resp.status_code == 200, resp.text
             body = resp.json()
             assert body["message"].startswith("You spent $0.00")
-            assert body["tool_calls"] == [
-                {"name": "get_spending_summary", "status": "completed"}
-            ]
+            (tool_call,) = body["tool_calls"]
+            assert tool_call["name"] == "get_spending_summary"
+            assert tool_call["status"] == "completed"
+            assert isinstance(tool_call["duration_ms"], int)
             conversation_id = body["conversation_id"]
 
             # the LLM was called twice; the 2nd call carried the tool result
@@ -176,10 +177,11 @@ async def test_chat_stream_sse_events():
             assert names[-1] == "done"
 
             tool_events = [d for n, d in events if n == "tool"]
-            assert tool_events[0] == {
-                "name": "get_recurring_transactions", "status": "running",
-            }
+            assert tool_events[0]["name"] == "get_recurring_transactions"
+            assert tool_events[0]["status"] == "running"
+            assert tool_events[0]["duration_ms"] is None
             assert tool_events[1]["status"] == "completed"
+            assert isinstance(tool_events[1]["duration_ms"], int)
 
             tokens = "".join(d["text"] for n, d in events if n == "token")
             assert tokens == "No recurring charges found."
@@ -210,9 +212,11 @@ async def test_invalid_tool_call_recovers_as_error_result():
                 json={"user_id": user_id, "message": "subscriptions?"},
             )
             assert resp.status_code == 200
-            assert resp.json()["tool_calls"] == [
-                {"name": "get_recurring_transactions", "status": "failed"},
-                {"name": "drop_database", "status": "failed"},
+            assert [
+                (c["name"], c["status"]) for c in resp.json()["tool_calls"]
+            ] == [
+                ("get_recurring_transactions", "failed"),
+                ("drop_database", "failed"),
             ]
             # each failure was fed back to the model as an error tool_result
             for call_index, needle in ((1, "lookback_days"), (2, "Unknown tool")):

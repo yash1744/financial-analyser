@@ -28,8 +28,10 @@ from app.ai.schemas import (
 from app.core.config import Settings
 
 
-def make_settings() -> Settings:
-    return Settings(openai_api_key="test", openai_model="gpt-5.1")
+def make_settings(**overrides) -> Settings:
+    # _env_file=None: don't let the developer's real .env leak into tests
+    defaults = {"openai_api_key": "test", "openai_model": "gpt-5.1"}
+    return Settings(_env_file=None, **{**defaults, **overrides})
 
 
 class StubCompletions:
@@ -245,16 +247,18 @@ def test_get_llm_client_selects_provider():
     from app.ai.llm_client import AnthropicLLMClient
     from app.api.deps import get_llm_client
 
-    openai_settings = Settings(llm_provider="openai", openai_api_key="k")
+    openai_settings = Settings(
+        _env_file=None, llm_provider="openai", openai_api_key="k"
+    )
     assert isinstance(get_llm_client(openai_settings), OpenAILLMClient)
 
-    anthropic_settings = Settings(anthropic_api_key="k")
+    anthropic_settings = Settings(_env_file=None, anthropic_api_key="k")
     assert isinstance(get_llm_client(anthropic_settings), AnthropicLLMClient)
 
     with pytest.raises(LLMConfigurationError, match="OPENAI_API_KEY"):
-        get_llm_client(Settings(llm_provider="openai"))
+        get_llm_client(Settings(_env_file=None, llm_provider="openai"))
     with pytest.raises(LLMConfigurationError, match="ANTHROPIC_API_KEY"):
-        get_llm_client(Settings())
+        get_llm_client(Settings(_env_file=None))
 
 
 async def test_sdk_errors_map_to_typed_hierarchy():

@@ -124,6 +124,6 @@ class ChatService:
 
 def _summaries(result: AgentRunResult) -> list[ToolCallSummary]:
     return [
-        ToolCallSummary(name=e.name, status=e.status)  # type: ignore[arg-type]
+        ToolCallSummary(name=e.name, status=e.status, duration_ms=e.duration_ms)  # type: ignore[arg-type]
         for e in result.tool_events
     ]

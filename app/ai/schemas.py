@@ -105,6 +105,7 @@ class ToolEvent(BaseModel):
     type: Literal["tool"] = "tool"
     name: str
     status: Literal["running", "completed", "failed"]
+    duration_ms: int | None = None  # set on completed/failed, absent on running
 
 
 class DoneEvent(BaseModel):
@@ -129,6 +130,7 @@ class ChatRequest(BaseModel):
 class ToolCallSummary(BaseModel):
     name: str
     status: Literal["completed", "failed"]
+    duration_ms: int | None = None
 
 
 class ChatResponse(BaseModel):

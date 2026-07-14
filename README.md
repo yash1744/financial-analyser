@@ -3,8 +3,9 @@
 Personal finance application backend. The full Plaid pipeline works
 end-to-end: connect a bank via Link (encrypted access-token storage),
 sync accounts, and sync transactions (cursor-based, idempotent, raw
-payloads kept for reprocessing). Auth, categorization, analytics, and
-LLM features land later.
+payloads kept for reprocessing). An LLM chat backend answers questions
+about the synced data through tool calls (Anthropic or OpenAI).
+Auth and categorization land later.
 
 ## API
 
@@ -26,6 +27,8 @@ LLM features land later.
 | GET | `/api/v1/insights/spending-summary` | Headline totals + top category/merchant for a range |
 | GET | `/api/v1/insights/compare-spending` | Baseline vs comparison period with per-category deltas |
 | GET | `/api/v1/insights/recurring-transactions` | Detected subscription-like charges with cadence |
+| POST | `/api/v1/ai/chat` | Ask the finance assistant a question (JSON response) |
+| POST | `/api/v1/ai/chat/stream` | Same, streamed as SSE (`token` / `tool` / `done` events) |
 
 Interactive docs at <http://localhost:8000/docs>. `user_id` currently rides
 in request bodies; it moves to the auth context once authentication exists.
@@ -47,7 +50,8 @@ cd frontend && npm install && npm run dev   # http://localhost:3000
 ## Quick start
 
 ```bash
-cp .env.example .env               # then fill in PLAID_* and TOKEN_ENCRYPTION_KEY
+cp .env.example .env               # then fill in PLAID_*, TOKEN_ENCRYPTION_KEY,
+                                   #   and an LLM key for /ai endpoints (optional)
 docker compose up --build          # API on http://localhost:8000, Postgres on :5432
 curl http://localhost:8000/api/v1/health
 ```
@@ -82,6 +86,11 @@ app/
   api/
     deps.py          # dependency-injection wiring (sessions, services)
     v1/              # versioned routers; routes stay thin
+  ai/                # LLM chat backend: agent.py (tool loop), llm_client.py
+                     #   (interface + Anthropic adapter), openai_client.py
+                     #   (OpenAI adapter), tool_registry.py, chat_service.py,
+                     #   prompts.py, schemas.py (provider-neutral types)
+  llm/               # tools.py: FinanceToolset (tool defs + execution)
   services/          # business logic: plaid.py (Plaid gateway),
                      #   plaid_link.py (Link flow), account_sync.py,
                      #   transaction_sync.py (write side), queries.py
@@ -231,7 +240,8 @@ All logic lives in the services; three consumers share it:
   `execute(name, args)` validates with the same Pydantic params models the
   REST layer uses and calls the same service methods. `user_id` is bound at
   construction and never appears in a tool schema, so the model can only
-  read the data of the user it was built for.
+  read the data of the user it was built for. This is what the AI chat
+  agent (below) calls.
 - **Scheduled jobs** (future): call the services directly with a session.
 
 The `*Params` models in `app/schemas/insights.py` deliberately exclude
@@ -244,13 +254,45 @@ service classifies each merchant — every gap between charges within 4 days
 of the median gap, median gap inside a cadence band (weekly / biweekly /
 monthly / quarterly / yearly), every amount within ±20% of the median.
 
+## AI chat
+
+`POST /ai/chat` takes `{user_id, message, conversation_id?}` and returns the
+assistant's answer plus a tool-call audit trail; omitting `conversation_id`
+starts a new conversation, passing it back continues one (history is loaded
+from Postgres, so conversations survive restarts). `/ai/chat/stream` is the
+same request served as SSE: `token` events (text deltas), `tool` events
+(`running` / `completed` / `failed` per call), then one `done` event with the
+final message and conversation id.
+
+Architecture (`app/ai/`): `FinanceAgent` runs the model ⇄ tool loop against
+two abstractions — `LLMClient` (provider adapter) and `ToolRegistry` (wraps
+`FinanceToolset`; invalid arguments and unknown tools come back as readable
+error results the model can recover from, never exceptions). `ChatService`
+owns persistence: every message — user, assistant (including tool-use
+blocks), tool results — lands in `messages` as provider-neutral JSONB, and
+only user/assistant text is replayed as context for later turns. Routes,
+services, and repositories never see a provider SDK.
+
+Providers: `LLM_PROVIDER=anthropic` (default, `claude-opus-4-8`, adaptive
+thinking + prompt caching) or `LLM_PROVIDER=openai` (`gpt-5.1`, Chat
+Completions). Set the matching `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` in
+`.env`; without one the `/ai` endpoints return 503 and everything else runs
+normally. Provider failures map to typed errors → HTTP: rate limit 429,
+auth/config 503, timeout 504, other provider errors 502.
+
+Tests inject a scripted fake through the `get_llm_client` dependency
+override, so `tests/test_ai_chat_api.py` exercises the real agent loop,
+tools, SQL, and SSE framing with no key and no network;
+`tests/test_openai_client.py` unit-tests the OpenAI wire-format translation.
+
 ## Data model
 
 ```
 users 1──* plaid_items 1──* accounts 1──* transactions *──1 categories (optional)
-                │                                              └── self-ref parent
-                ├── 1──1 plaid_sync_state          (one /transactions/sync cursor per item)
-                └── 1──* raw_plaid_transactions    (verbatim JSONB payloads)
+  │             │                                              └── self-ref parent
+  │             ├── 1──1 plaid_sync_state          (one /transactions/sync cursor per item)
+  │             └── 1──* raw_plaid_transactions    (verbatim JSONB payloads)
+  └── 1──* conversations 1──* messages             (chat history; content is JSONB blocks)
 ```
 
 Sync pipeline: Plaid payloads land verbatim in `raw_plaid_transactions`

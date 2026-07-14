@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     # Fernet key for encrypting Plaid access tokens at rest
     token_encryption_key: str = ""
 
+    # LLM chat (app boots fine without a key; /ai endpoints then return 503)
+    llm_provider: Literal["anthropic", "openai"] = "anthropic"
+    anthropic_api_key: str = ""
+    llm_model: str = "claude-opus-4-8"  # used when llm_provider=anthropic
+    openai_api_key: str = ""
+    openai_model: str = "gpt-5.1"  # used when llm_provider=openai
+    llm_max_tokens: int = 4096
+    llm_timeout_seconds: float = 60.0
+    llm_max_tool_iterations: int = 8
+
     @property
     def plaid_products_list(self) -> list[str]:
         return [p.strip() for p in self.plaid_products.split(",") if p.strip()]

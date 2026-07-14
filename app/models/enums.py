@@ -44,3 +44,9 @@ class SyncStatus(enum.StrEnum):
 class TransactionType(enum.StrEnum):
     DEBIT = "debit"
     CREDIT = "credit"
+
+
+class MessageRole(enum.StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"

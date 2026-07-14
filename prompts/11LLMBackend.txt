@@ -1,0 +1,275 @@
+I already have a FastAPI backend for a personal finance application.
+
+Finance tools are already implemented:
+
+Do NOT recreate these tools.
+
+I want to add an LLM chat backend that uses these tools.
+
+Goal:
+
+Frontend sends a natural language message:
+
+"Why did I spend more this month?"
+
+Backend:
+1. Receives message.
+2. Sends it to LLM with available finance tools.
+3. LLM decides which tools to call.
+4. Backend executes tools.
+5. Tool results are sent back to LLM.
+6. LLM generates final natural language response.
+7. Backend returns/streams response to frontend.
+
+Architecture:
+
+Frontend
+    |
+    |
+FastAPI /ai/chat
+    |
+    |
+FinanceAgent
+    |
+    |
+LLM Provider
+    |
+    |
+Tool Registry
+    |
+    |
+Existing Finance Tools
+    |
+    |
+Database
+
+
+Implement the following:
+
+## 1. AI module structure
+
+Create:
+
+app/
+ ├── ai/
+ │    ├── agent.py
+ │    ├── llm_client.py
+ │    ├── tool_registry.py
+ │    ├── prompts.py
+ │    ├── schemas.py
+ │    └── exceptions.py
+
+
+## 2. LLM Client abstraction
+
+Create a provider-independent interface.
+
+Example:
+
+LLMClient
+
+Responsibilities:
+- Send messages to LLM.
+- Provide tools.
+- Handle tool calls.
+- Support streaming responses.
+
+The application should not directly depend on OpenAI-specific code.
+
+Use dependency injection.
+
+
+## 3. Finance Agent
+
+Create:
+
+FinanceAgent
+
+Responsibilities:
+
+- Manage conversation flow.
+- Provide system prompt.
+- Send available tools to LLM.
+- Handle tool execution loop.
+
+Flow:
+
+User message
+    |
+    v
+LLM
+    |
+    +---- tool call?
+             |
+             v
+        Execute tool
+             |
+             v
+        Send result back to LLM
+             |
+             v
+        Final answer
+
+
+The agent should not contain:
+- SQL queries
+- Business logic
+- Financial calculations
+
+
+## 4. Tool Registry
+
+Create a central registry:
+
+Example:
+
+ToolRegistry
+
+Responsibilities:
+
+- Register available tools.
+- Return tools to LLM.
+- Execute tool calls.
+
+Tools should be injected into the agent.
+
+
+## 5. API Endpoint
+
+Create:
+
+POST /ai/chat
+
+
+Request:
+
+{
+    "conversation_id": optional,
+    "message": "How much did I spend this month?"
+}
+
+
+Response:
+
+{
+    "message": "...",
+    "tool_calls": [
+        {
+            "name": "get_spending_summary",
+            "status": "completed"
+        }
+    ]
+}
+
+
+## 6. Streaming Support
+
+Create:
+
+POST /ai/chat/stream
+
+
+Use Server Sent Events (SSE).
+
+Stream:
+
+- assistant tokens
+- tool execution events
+- completion event
+
+
+Example:
+
+event: token
+
+data:
+"Your spending"
+
+
+event: tool
+
+data:
+{
+ "name":"get_spending_summary",
+ "status":"running"
+}
+
+
+event: token
+
+data:
+"increased by 20%"
+ 
+
+## 7. Conversation Handling
+
+Create models for:
+
+Conversation:
+
+- id
+- user_id
+- created_at
+- updated_at
+
+
+Message:
+
+- id
+- conversation_id
+- role
+- content
+- created_at
+
+
+Roles:
+
+- user
+- assistant
+- tool
+
+
+Store messages so future conversations have context.
+
+
+## 8. System Prompt
+
+Create a finance assistant system prompt.
+
+Requirements:
+
+- You are a personal finance assistant.
+- Never invent financial numbers.
+- Always use tools for financial questions.
+- Explain insights clearly.
+- Mention uncertainty when appropriate.
+
+
+## 9. Error Handling
+
+Handle:
+
+- LLM failures
+- Tool failures
+- Invalid tool arguments
+- Timeout
+- Rate limits
+
+
+## 10. Tests
+
+Create tests for:
+
+- Agent calling a tool.
+- Tool result handling.
+- Final response generation.
+- API endpoint.
+
+
+Before writing code:
+
+Explain:
+1. Agent architecture.
+2. File structure changes.
+3. Request lifecycle from frontend to database.
+4. Why the LLM should not directly access services/database.

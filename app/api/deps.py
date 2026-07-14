@@ -7,10 +7,16 @@ Routes declare what they need via Annotated types; construction details
 from functools import lru_cache
 from typing import Annotated
 
+from anthropic import AsyncAnthropic
 from fastapi import Depends
+from openai import AsyncOpenAI
 from plaid.api import plaid_api
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.chat_service import ChatService
+from app.ai.exceptions import LLMConfigurationError
+from app.ai.llm_client import AnthropicLLMClient, LLMClient
+from app.ai.openai_client import OpenAILLMClient
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
 from app.services.account_sync import AccountSyncService
@@ -133,3 +139,41 @@ def get_insights_service(session: DbSessionDep) -> InsightsService:
 
 
 InsightsServiceDep = Annotated[InsightsService, Depends(get_insights_service)]
+
+
+@lru_cache
+def _anthropic_client(api_key: str, timeout: float) -> AsyncAnthropic:
+    """One client (with its connection pool) per process."""
+    return AsyncAnthropic(api_key=api_key, timeout=timeout)
+
+
+@lru_cache
+def _openai_client(api_key: str, timeout: float) -> AsyncOpenAI:
+    """One client (with its connection pool) per process."""
+    return AsyncOpenAI(api_key=api_key, timeout=timeout)
+
+
+def get_llm_client(settings: SettingsDep) -> LLMClient:
+    if settings.llm_provider == "openai":
+        if not settings.openai_api_key:
+            raise LLMConfigurationError("OPENAI_API_KEY is not set")
+        client = _openai_client(
+            settings.openai_api_key, settings.llm_timeout_seconds
+        )
+        return OpenAILLMClient(client=client, settings=settings)
+    if not settings.anthropic_api_key:
+        raise LLMConfigurationError("ANTHROPIC_API_KEY is not set")
+    client = _anthropic_client(
+        settings.anthropic_api_key, settings.llm_timeout_seconds
+    )
+    return AnthropicLLMClient(client=client, settings=settings)
+
+
+LLMClientDep = Annotated[LLMClient, Depends(get_llm_client)]
+
+
+def get_chat_service(session: DbSessionDep, llm: LLMClientDep) -> ChatService:
+    return ChatService(session=session, llm=llm)
+
+
+ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]

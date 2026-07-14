@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.routes import (
     accounts,
+    ai,
     analytics,
     categories,
     health,
@@ -20,3 +21,4 @@ api_router.include_router(transactions.router)
 api_router.include_router(categories.router)
 api_router.include_router(analytics.router)
 api_router.include_router(insights.router)
+api_router.include_router(ai.router)

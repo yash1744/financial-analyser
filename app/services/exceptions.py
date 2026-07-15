@@ -17,6 +17,14 @@ class AuthenticationError(Exception):
     """Missing/invalid credentials or token. Maps to HTTP 401."""
 
 
+class RateLimitedError(Exception):
+    """Too many attempts. Maps to HTTP 429 with Retry-After."""
+
+    def __init__(self, message: str, retry_after_seconds: float) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 class PlaidConfigurationError(Exception):
     """Plaid credentials are missing or invalid at client-build time."""
 

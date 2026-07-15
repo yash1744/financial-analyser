@@ -19,6 +19,7 @@ from app.ai.exceptions import LLMConfigurationError
 from app.ai.llm_client import AnthropicLLMClient, LLMClient
 from app.ai.openai_client import OpenAILLMClient
 from app.core.config import Settings, get_settings
+from app.core.rate_limit import SlidingWindowLimiter
 from app.db.session import get_db_session
 from app.models.user import User
 from app.services.account_sync import AccountSyncService
@@ -46,6 +47,17 @@ def get_auth_service(session: DbSessionDep, settings: SettingsDep) -> AuthServic
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+# One limiter per process: 10 attempts per minute per (client, email).
+# Generous for humans, hopeless for online brute-force.
+_auth_limiter = SlidingWindowLimiter(limit=10, window_seconds=60)
+
+
+def get_auth_rate_limiter() -> SlidingWindowLimiter:
+    return _auth_limiter
+
+
+AuthRateLimiterDep = Annotated[SlidingWindowLimiter, Depends(get_auth_rate_limiter)]
 
 # auto_error=False so a missing header raises our AuthenticationError
 # (→ 401 with WWW-Authenticate) instead of FastAPI's default 403

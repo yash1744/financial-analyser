@@ -124,6 +124,26 @@ docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 A real `DOMAIN` gets automatic Let's Encrypt certificates;
 `DOMAIN=localhost` (the default) uses Caddy's internal CA — handy for
 verifying the stack locally with `curl -k https://localhost/`.
+## Backups
+
+A compose sidecar (`db-backup`, opt-in via the `backup` profile) writes a
+compressed `pg_dump` custom-format dump to `./backups/` daily and prunes
+dumps older than `BACKUP_KEEP_DAYS` (14):
+
+```bash
+docker compose --profile backup up -d db-backup                              # daily loop
+docker compose --profile backup run --rm db-backup /scripts/db_backup.sh    # one-shot now
+# verify a dump without touching live data (restores into a scratch DB):
+docker compose --profile backup run --rm db-backup \
+  /scripts/db_restore.sh /backups/<file>.dump finance_restore_test
+# disaster recovery (drops + recreates live objects):
+docker compose --profile backup run --rm db-backup \
+  /scripts/db_restore.sh /backups/<file>.dump finance
+```
+
+`./backups/` is a host directory (gitignored) — for production, ship it
+off-box (object storage via rclone/cron, or use a managed Postgres with
+PITR instead).
 
 ## Layout
 

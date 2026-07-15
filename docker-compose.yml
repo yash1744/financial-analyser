@@ -33,6 +33,32 @@ services:
       timeout: 5s
       retries: 5
 
+  # Scheduled pg_dump sidecar. Not started by default:
+  #   docker compose --profile backup up -d db-backup     # daily loop
+  #   docker compose --profile backup run --rm db-backup /scripts/db_backup.sh   # one-shot
+  # Restore (see scripts/db_restore.sh):
+  #   docker compose --profile backup run --rm db-backup /scripts/db_restore.sh /backups/<file>.dump [db]
+  db-backup:
+    image: postgres:17-alpine
+    profiles: ["backup"]
+    environment:
+      PGHOST: db
+      PGUSER: finance
+      PGPASSWORD: finance
+      PGDATABASE: finance
+      BACKUP_KEEP_DAYS: 14
+      BACKUP_INTERVAL_SECONDS: 86400
+    volumes:
+      - ./backups:/backups
+      - ./scripts:/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - while true; do /scripts/db_backup.sh; sleep "$${BACKUP_INTERVAL_SECONDS}"; done
+
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:

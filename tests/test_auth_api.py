@@ -3,11 +3,14 @@ enforcement on protected endpoints, and cross-user isolation."""
 
 import uuid
 
+from cryptography.fernet import Fernet
 from httpx import ASGITransport, AsyncClient
 
+from app.api.deps import get_plaid_service, get_token_cipher
 from app.db.session import SessionFactory
 from app.main import app
 from app.models.user import User
+from app.utils.crypto import TokenCipher
 from tests.conftest import TEST_PASSWORD, register_user
 
 
@@ -139,26 +142,36 @@ async def test_protected_endpoints_require_valid_token():
 
 async def test_cross_user_isolation():
     """User B must never see user A's data, even with valid auth."""
+    # /transactions/sync constructs its Plaid service + cipher before the
+    # ownership check; fake both so the test runs without Plaid env vars
+    # (the ownership 404 fires before either would be used)
+    fake_cipher = TokenCipher(Fernet.generate_key().decode())
+    app.dependency_overrides[get_plaid_service] = lambda: None
+    app.dependency_overrides[get_token_cipher] = lambda: fake_cipher
+
     transport = ASGITransport(app=app)
     user_a_id = user_b_id = None
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        headers_a, user_a_id = await register_user(client)
-        headers_b, user_b_id = await register_user(client)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            headers_a, user_a_id = await register_user(client)
+            headers_b, user_b_id = await register_user(client)
 
-        # reads are scoped by the token, not by anything client-supplied
-        resp = await client.get("/api/v1/accounts", headers=headers_b)
-        assert resp.status_code == 200 and resp.json() == []
-        resp = await client.get("/api/v1/transactions", headers=headers_b)
-        assert resp.json()["total"] == 0
+            # reads are scoped by the token, not by anything client-supplied
+            resp = await client.get("/api/v1/accounts", headers=headers_b)
+            assert resp.status_code == 200 and resp.json() == []
+            resp = await client.get("/api/v1/transactions", headers=headers_b)
+            assert resp.json()["total"] == 0
 
-        # B cannot act on A's items by guessing ids: unknown-for-this-user
-        fake_item = str(uuid.uuid4())
-        resp = await client.post(
-            "/api/v1/transactions/sync",
-            json={"item_id": fake_item},
-            headers=headers_b,
-        )
-        assert resp.status_code == 404
+            # B cannot act on A's items by guessing ids: unknown-for-this-user
+            fake_item = str(uuid.uuid4())
+            resp = await client.post(
+                "/api/v1/transactions/sync",
+                json={"item_id": fake_item},
+                headers=headers_b,
+            )
+            assert resp.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
 
     # cleanup
     async with SessionFactory() as session:

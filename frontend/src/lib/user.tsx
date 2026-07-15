@@ -1,9 +1,12 @@
 "use client";
 
 /**
- * The backend has no auth yet — user_id rides in every request. This store
- * holds the demo user (created via POST /users) persisted in localStorage,
- * exposed to React via useSyncExternalStore.
+ * Signed-in user profile store. The JWT itself lives in an httpOnly
+ * cookie set by the backend — JavaScript can never read it; the browser
+ * attaches it to same-origin requests automatically. localStorage holds
+ * only the non-sensitive profile (id + email) for display and cache
+ * keying. A 401 from the API clears the profile, which re-renders the
+ * login gate.
  */
 
 import {
@@ -14,7 +17,9 @@ import {
   type ReactNode,
 } from "react";
 
-const STORAGE_KEY = "finance.user";
+const STORAGE_KEY = "finance.profile";
+// pre-cookie stores; cleared on any write so stale tokens don't linger
+const LEGACY_KEYS = ["finance.user", "finance.session"];
 
 export interface StoredUser {
   id: string;
@@ -62,13 +67,19 @@ function getServerSnapshot(): StoredUser | null {
   return null;
 }
 
-function setStoredUser(user: StoredUser | null) {
+export function setProfile(user: StoredUser | null) {
   if (user) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   } else {
     localStorage.removeItem(STORAGE_KEY);
   }
+  LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
   emit();
+}
+
+/** Called by the api client when the backend rejects the cookie/token. */
+export function clearSession() {
+  setProfile(null);
 }
 
 // --- context ---
@@ -77,7 +88,7 @@ interface UserContextValue {
   user: StoredUser | null;
   /** false during SSR/hydration, before localStorage has been read */
   ready: boolean;
-  setUser: (user: StoredUser) => void;
+  setProfile: (user: StoredUser) => void;
   clearUser: () => void;
 }
 
@@ -96,8 +107,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       ready,
-      setUser: setStoredUser,
-      clearUser: () => setStoredUser(null),
+      setProfile,
+      clearUser: () => setProfile(null),
     }),
     [user, ready],
   );

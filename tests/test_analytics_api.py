@@ -27,6 +27,7 @@ from app.schemas.plaid import (
     TransactionsSyncResult,
 )
 from app.utils.crypto import TokenCipher
+from tests.conftest import register_user
 
 
 def txn(txn_id: str, account_id: str, amount: float, name: str, when: str) -> dict[str, Any]:
@@ -90,17 +91,14 @@ async def test_analytics_apis():
     category_id: uuid.UUID | None = None
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/api/v1/users",
-                json={"email": f"analytics-{uuid.uuid4().hex[:12]}@example.com"},
-            )
-            user_id = resp.json()["id"]
+            headers, user_id = await register_user(client)
             await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "p1"},
+                json={"public_token": "p1"},
+                headers=headers,
             )
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             assert resp.json()["items"][0]["added"] == 6
 
@@ -125,7 +123,7 @@ async def test_analytics_apis():
 
             # --- monthly-spending ---
             resp = await client.get(
-                "/api/v1/analytics/monthly-spending", params={"user_id": user_id}
+                "/api/v1/analytics/monthly-spending", headers=headers
             )
             assert resp.status_code == 200, resp.text
             months = resp.json()["months"]
@@ -139,13 +137,13 @@ async def test_analytics_apis():
             assert july["transaction_count"] == 4
 
             # account filter: checking only
-            resp = await client.get("/api/v1/accounts", params={"user_id": user_id})
+            resp = await client.get("/api/v1/accounts", headers=headers)
             chk_id = next(
                 a["id"] for a in resp.json() if a["plaid_account_id"] == "chk-1"
             )
             resp = await client.get(
                 "/api/v1/analytics/monthly-spending",
-                params={"user_id": user_id, "account_id": chk_id},
+                headers=headers, params={"account_id": chk_id},
             )
             months = resp.json()["months"]
             assert [(m["month"], m["spending"]) for m in months] == [
@@ -156,13 +154,13 @@ async def test_analytics_apis():
             # date filter narrows to July
             resp = await client.get(
                 "/api/v1/analytics/monthly-spending",
-                params={"user_id": user_id, "start_date": "2026-07-01"},
+                headers=headers, params={"start_date": "2026-07-01"},
             )
             assert [m["month"] for m in resp.json()["months"]] == ["2026-07"]
 
             # --- category-breakdown ---
             resp = await client.get(
-                "/api/v1/analytics/category-breakdown", params={"user_id": user_id}
+                "/api/v1/analytics/category-breakdown", headers=headers
             )
             body = resp.json()
             assert body["total_spending"] == "160.49"
@@ -178,7 +176,7 @@ async def test_analytics_apis():
             # --- top-merchants ---
             resp = await client.get(
                 "/api/v1/analytics/top-merchants",
-                params={"user_id": user_id, "limit": 2},
+                headers=headers, params={"limit": 2},
             )
             merchants = [
                 (m["merchant_name"], m["total"], m["transaction_count"])
@@ -190,7 +188,7 @@ async def test_analytics_apis():
             # --- month-over-month (today is in 2026-07; June+July in window) ---
             resp = await client.get(
                 "/api/v1/analytics/month-over-month",
-                params={"user_id": user_id, "months": 6},
+                headers=headers, params={"months": 6},
             )
             points = resp.json()["months"]
             assert len(points) == 6
@@ -205,20 +203,18 @@ async def test_analytics_apis():
             assert (zero_filled["spending"], zero_filled["change"]) == ("0.00", "0.00")
 
             # --- validation / errors ---
-            resp = await client.get(
-                "/api/v1/analytics/monthly-spending",
-                params={"user_id": str(uuid.uuid4())},
-            )
-            assert resp.status_code == 404
+            # identity comes from the token; no token → 401
+            resp = await client.get("/api/v1/analytics/monthly-spending")
+            assert resp.status_code == 401
             resp = await client.get(
                 "/api/v1/analytics/category-breakdown",
-                params={"user_id": user_id, "start_date": "2026-07-10",
+                headers=headers, params={"start_date": "2026-07-10",
                         "end_date": "2026-07-01"},
             )
             assert resp.status_code == 422
             resp = await client.get(
                 "/api/v1/analytics/top-merchants",
-                params={"user_id": user_id, "limit": 100},
+                headers=headers, params={"limit": 100},
             )
             assert resp.status_code == 422
 

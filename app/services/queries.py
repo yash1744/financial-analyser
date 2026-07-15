@@ -43,12 +43,12 @@ class TransactionQueryService:
         self.transactions = TransactionRepository(session)
 
     async def list_transactions(
-        self, query: TransactionListQuery
+        self, user_id: uuid.UUID, query: TransactionListQuery
     ) -> PaginatedTransactionsResponse:
-        if await self.users.get(query.user_id) is None:
-            raise NotFoundError(f"user {query.user_id} does not exist")
+        if await self.users.get(user_id) is None:
+            raise NotFoundError(f"user {user_id} does not exist")
         rows, total = await self.transactions.search(
-            user_id=query.user_id,
+            user_id=user_id,
             account_id=query.account_id,
             category_id=query.category_id,
             classification=query.classification,

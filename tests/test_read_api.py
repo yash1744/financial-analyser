@@ -18,6 +18,7 @@ from app.schemas.plaid import (
     TransactionsSyncResult,
 )
 from app.utils.crypto import TokenCipher
+from tests.conftest import register_user
 
 
 def txn(
@@ -88,15 +89,12 @@ async def test_read_apis():
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # seed: user + item + 2 accounts + 5 transactions via the sync pipeline
-            resp = await client.post(
-                "/api/v1/users",
-                json={"email": f"read-{uuid.uuid4().hex[:12]}@example.com"},
-            )
-            user_id = resp.json()["id"]
+            headers, user_id = await register_user(client)
             created_user_ids.append(user_id)
             await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "1"},
+                json={"public_token": "1"},
+                headers=headers,
             )
             fake_plaid.sync_result = TransactionsSyncResult(
                 added=[
@@ -115,7 +113,7 @@ async def test_read_apis():
                 next_cursor="cur-1",
             )
             resp = await client.post(
-                "/api/v1/transactions/sync", json={"user_id": user_id}
+                "/api/v1/transactions/sync", json={}, headers=headers
             )
             assert resp.json()["items"][0]["added"] == 5
 
@@ -136,7 +134,7 @@ async def test_read_apis():
                 await session.commit()
 
             # GET /accounts: clean DTO, no ORM leakage
-            resp = await client.get("/api/v1/accounts", params={"user_id": user_id})
+            resp = await client.get("/api/v1/accounts", headers=headers)
             assert resp.status_code == 200
             accounts = resp.json()
             assert len(accounts) == 2
@@ -146,11 +144,11 @@ async def test_read_apis():
             }
             chk_id = next(a["id"] for a in accounts if a["plaid_account_id"] == "chk-1")
 
-            resp = await client.get("/api/v1/accounts", params={"user_id": str(uuid.uuid4())})
-            assert resp.status_code == 404
+            resp = await client.get("/api/v1/accounts")
+            assert resp.status_code == 401
 
             # GET /transactions: default sort = date desc
-            resp = await client.get("/api/v1/transactions", params={"user_id": user_id})
+            resp = await client.get("/api/v1/transactions", headers=headers)
             body = resp.json()
             assert body["total"] == 5
             assert body["total_pages"] == 1
@@ -164,100 +162,96 @@ async def test_read_apis():
             assert body["items"][0]["classification"] == "unknown"
 
             # date range filter (inclusive both ends)
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "start_date": "2026-07-01", "end_date": "2026-07-08",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "start_date": "2026-07-01", "end_date": "2026-07-08",
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t2", "t3"}
 
             # amount filters
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "min_amount": "10",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "min_amount": "10",
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t2", "t4"}
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "max_amount": "0",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "max_amount": "0",
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t3"}
 
             # account filter
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "account_id": chk_id,
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "account_id": chk_id,
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t2", "t5"}
 
             # category filter
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "category_id": str(category_id),
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "category_id": str(category_id),
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
 
             # classification filter
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "classification": "expense",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "classification": "expense",
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "classification": "refund",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "classification": "refund",
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t3"]
             # combines with other filters
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "classification": "unknown", "account_id": chk_id,
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "classification": "unknown", "account_id": chk_id,
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t2", "t5"}
             # invalid value is rejected by schema validation
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "classification": "bogus",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "classification": "bogus",
             })
             assert resp.status_code == 422
 
             # sorting
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "sort_by": "amount", "sort_dir": "asc",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "sort_by": "amount", "sort_dir": "asc",
             })
             assert resp.json()["items"][0]["plaid_transaction_id"] == "t3"
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "sort_by": "merchant_name", "sort_dir": "asc",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "sort_by": "merchant_name", "sort_dir": "asc",
             })
             assert resp.json()["items"][0]["merchant_name"] == "Alpha Coffee"
 
             # pagination
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "page_size": 2, "page": 1,
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "page_size": 2, "page": 1,
             })
             body = resp.json()
             assert [t["plaid_transaction_id"] for t in body["items"]] == ["t4", "t3"]
             assert body["total"] == 5
             assert body["total_pages"] == 3
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "page_size": 2, "page": 3,
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "page_size": 2, "page": 3,
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t5"]
 
             # invalid ranges → 422
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "start_date": "2026-07-10", "end_date": "2026-07-01",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "start_date": "2026-07-10", "end_date": "2026-07-01",
             })
             assert resp.status_code == 422
-            resp = await client.get("/api/v1/transactions", params={
-                "user_id": user_id, "min_amount": "100", "max_amount": "1",
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "min_amount": "100", "max_amount": "1",
             })
             assert resp.status_code == 422
 
             # another user sees nothing of this data
-            resp = await client.post(
-                "/api/v1/users",
-                json={"email": f"read2-{uuid.uuid4().hex[:12]}@example.com"},
-            )
-            other_id = resp.json()["id"]
+            headers_other, other_id = await register_user(client)
             created_user_ids.append(other_id)
-            resp = await client.get("/api/v1/transactions", params={"user_id": other_id})
+            resp = await client.get("/api/v1/transactions", headers=headers_other)
             assert resp.json()["total"] == 0
-            resp = await client.get("/api/v1/accounts", params={"user_id": other_id})
+            resp = await client.get("/api/v1/accounts", headers=headers_other)
             assert resp.json() == []
 
             # GET /categories
-            resp = await client.get("/api/v1/categories")
+            resp = await client.get("/api/v1/categories", headers=headers)
             assert resp.status_code == 200
             match = [c for c in resp.json() if c["id"] == str(category_id)]
             assert len(match) == 1

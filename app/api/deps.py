@@ -8,7 +8,8 @@ from functools import lru_cache
 from typing import Annotated
 
 from anthropic import AsyncAnthropic
-from fastapi import Depends
+from fastapi import Cookie, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from openai import AsyncOpenAI
 from plaid.api import plaid_api
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,8 +20,11 @@ from app.ai.llm_client import AnthropicLLMClient, LLMClient
 from app.ai.openai_client import OpenAILLMClient
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
+from app.models.user import User
 from app.services.account_sync import AccountSyncService
 from app.services.analytics import AnalyticsService
+from app.services.auth import AuthService
+from app.services.exceptions import AuthenticationError
 from app.services.health import HealthService
 from app.services.insights import InsightsService
 from app.services.plaid import PlaidService, build_plaid_client
@@ -31,11 +35,40 @@ from app.services.queries import (
     TransactionQueryService,
 )
 from app.services.transaction_sync import TransactionSyncService
-from app.services.user import UserService
 from app.utils.crypto import TokenCipher
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
+
+
+def get_auth_service(session: DbSessionDep, settings: SettingsDep) -> AuthService:
+    return AuthService(session=session, settings=settings)
+
+
+AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+# auto_error=False so a missing header raises our AuthenticationError
+# (→ 401 with WWW-Authenticate) instead of FastAPI's default 403
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    auth: AuthServiceDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    access_token: Annotated[str | None, Cookie()] = None,
+) -> User:
+    """The authenticated user for this request. Every protected route
+    scopes its data to this user — client-supplied user ids are never
+    trusted. The token arrives either as an Authorization: Bearer header
+    (API clients) or as the httpOnly cookie set at login (the browser
+    app); the explicit header wins when both are present."""
+    token = credentials.credentials if credentials else access_token
+    if not token:
+        raise AuthenticationError("not authenticated")
+    return await auth.user_from_token(token)
+
+
+CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 
 def get_health_service(session: DbSessionDep, settings: SettingsDep) -> HealthService:
@@ -64,13 +97,6 @@ def get_token_cipher() -> TokenCipher:
 
 
 TokenCipherDep = Annotated[TokenCipher, Depends(get_token_cipher)]
-
-
-def get_user_service(session: DbSessionDep) -> UserService:
-    return UserService(session=session)
-
-
-UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 
 
 def get_plaid_link_service(

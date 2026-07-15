@@ -15,6 +15,9 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # Store emails lowercased at the service layer; unique index enforces it
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    # bcrypt hash; NULL only for rows created before auth existed — those
+    # accounts can be claimed by registering with the same email
+    password_hash: Mapped[str | None] = mapped_column(String(255))
 
     plaid_items: Mapped[list["PlaidItem"]] = relationship(
         back_populates="user",

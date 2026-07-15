@@ -122,7 +122,7 @@ AgentEvent = TokenEvent | ToolEvent | DoneEvent
 
 
 class ChatRequest(BaseModel):
-    user_id: uuid.UUID  # moves to the auth context once authentication lands
+    # the acting user comes from the auth context, never from the body
     conversation_id: uuid.UUID | None = None  # omit to start a new conversation
     message: str = Field(min_length=1, max_length=4000)
 

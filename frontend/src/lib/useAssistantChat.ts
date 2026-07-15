@@ -173,7 +173,7 @@ function makeId(): string {
   return `msg-${Date.now()}-${nextId}`;
 }
 
-export function useAssistantChat(userId: string) {
+export function useAssistantChat() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -220,14 +220,13 @@ export function useAssistantChat(userId: string) {
       dispatch({ type: "exchange_started", userText: message, assistantId });
       mutation.mutate({
         request: {
-          user_id: userId,
           conversation_id: state.conversationId,
           message,
         },
         assistantId,
       });
     },
-    [mutation, state.conversationId, streaming, userId],
+    [mutation, state.conversationId, streaming],
   );
 
   /** Re-run the last exchange after an error, reusing its bubbles. */
@@ -239,13 +238,12 @@ export function useAssistantChat(userId: string) {
     dispatch({ type: "retry_started", assistantId: failed.id });
     mutation.mutate({
       request: {
-        user_id: userId,
         conversation_id: state.conversationId,
         message: state.lastSent,
       },
       assistantId: failed.id,
     });
-  }, [mutation, state, streaming, userId]);
+  }, [mutation, state, streaming]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 

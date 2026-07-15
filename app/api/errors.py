@@ -19,6 +19,7 @@ from app.ai.exceptions import (
     LLMTimeoutError,
 )
 from app.services.exceptions import (
+    AuthenticationError,
     ConflictError,
     NotFoundError,
     PlaidConfigurationError,
@@ -30,6 +31,16 @@ logger = logging.getLogger(__name__)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AuthenticationError)
+    async def unauthenticated(
+        request: Request, exc: AuthenticationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": str(exc)},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})

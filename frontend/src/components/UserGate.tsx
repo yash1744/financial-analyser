@@ -1,10 +1,8 @@
 "use client";
 
 /**
- * Blocks the app until a demo user exists (the backend has no auth yet).
- * Creates one via POST /users, or accepts an existing user id — the backend
- * has no lookup-by-email endpoint, so a returning user on a fresh browser
- * pastes the id shown when the user was created.
+ * Blocks the app until a session exists. Register or sign in with
+ * email + password; the backend returns a JWT that rides every request.
  */
 
 import { useMutation } from "@tanstack/react-query";
@@ -19,94 +17,112 @@ import { Card } from "./ui/Card";
 import { Field, TextInput } from "./ui/Field";
 import { Spinner } from "./ui/Spinner";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type Mode = "login" | "register";
 
-function SetupForm() {
-  const { setUser } = useUser();
+function AuthForm() {
+  const { setProfile } = useUser();
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
-  const [existingId, setExistingId] = useState("");
-  const [idError, setIdError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
 
-  const createUser = useMutation({
-    mutationFn: (value: string) => api.createUser(value),
-    onSuccess: (user) => setUser({ id: user.id, email: user.email }),
+  const submit = useMutation({
+    mutationFn: () =>
+      mode === "login"
+        ? api.login(email.trim(), password)
+        : api.register(email.trim(), password),
+    // the token arrives as an httpOnly cookie; only the profile is stored
+    onSuccess: (auth) =>
+      setProfile({ id: auth.user.id, email: auth.user.email }),
   });
 
-  const handleCreate = (e: FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    createUser.mutate(email.trim());
+    submit.mutate();
   };
 
-  const handleExisting = (e: FormEvent) => {
-    e.preventDefault();
-    const id = existingId.trim();
-    if (!UUID_RE.test(id)) {
-      setIdError("That doesn't look like a valid user id (UUID).");
-      return;
-    }
-    setIdError(null);
-    setUser({ id, email: email.trim() || "existing user" });
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    submit.reset();
   };
 
-  const createError =
-    createUser.error instanceof ApiError && createUser.error.status === 409
-      ? "A user with this email already exists. Paste its user id below instead."
-      : createUser.error instanceof Error
-        ? createUser.error.message
+  const error =
+    submit.error instanceof ApiError
+      ? submit.error.detail
+      : submit.error instanceof Error
+        ? submit.error.message
         : null;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-page p-4">
       <Card className="w-full max-w-md">
-        <h1 className="text-lg font-semibold text-ink">Welcome</h1>
+        <h1 className="text-lg font-semibold text-ink">
+          {mode === "login" ? "Sign in" : "Create your account"}
+        </h1>
         <p className="mt-1 text-sm text-ink-3">
-          The backend has no sign-in yet — create a demo user to get started.
+          {mode === "login"
+            ? "Welcome back — your data is waiting."
+            : "Register with an email and a password of at least 8 characters."}
         </p>
 
-        <form onSubmit={handleCreate} className="mt-5 space-y-3">
+        <form onSubmit={handleSubmit} className="mt-5 space-y-3">
           <Field label="Email">
             <TextInput
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
             />
           </Field>
-          {createError && (
-            <p role="alert" className="text-xs text-bad">
-              {createError}
-            </p>
-          )}
-          <Button type="submit" loading={createUser.isPending} className="w-full">
-            Create user
-          </Button>
-        </form>
-
-        <div className="my-5 flex items-center gap-3 text-xs text-ink-3">
-          <span className="h-px flex-1 bg-line" />
-          or
-          <span className="h-px flex-1 bg-line" />
-        </div>
-
-        <form onSubmit={handleExisting} className="space-y-3">
-          <Field label="Existing user id">
+          <Field label="Password">
             <TextInput
-              value={existingId}
-              onChange={(e) => setExistingId(e.target.value)}
-              placeholder="00000000-0000-0000-0000-000000000000"
+              type="password"
+              required
+              minLength={mode === "register" ? 8 : 1}
+              autoComplete={
+                mode === "login" ? "current-password" : "new-password"
+              }
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
             />
           </Field>
-          {idError && (
+          {error && (
             <p role="alert" className="text-xs text-bad">
-              {idError}
+              {error}
             </p>
           )}
-          <Button type="submit" variant="secondary" className="w-full">
-            Use existing user
+          <Button type="submit" loading={submit.isPending} className="w-full">
+            {mode === "login" ? "Sign in" : "Register"}
           </Button>
         </form>
+
+        <p className="mt-4 text-center text-xs text-ink-3">
+          {mode === "login" ? (
+            <>
+              New here?{" "}
+              <button
+                type="button"
+                onClick={() => switchMode("register")}
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                Create an account
+              </button>
+            </>
+          ) : (
+            <>
+              Already registered?{" "}
+              <button
+                type="button"
+                onClick={() => switchMode("login")}
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                Sign in
+              </button>
+            </>
+          )}
+        </p>
       </Card>
     </main>
   );
@@ -122,6 +138,6 @@ export function UserGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!user) return <SetupForm />;
+  if (!user) return <AuthForm />;
   return <>{children}</>;
 }

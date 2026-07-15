@@ -1,4 +1,9 @@
-/** Thin fetch wrapper for the FastAPI backend (proxied via Next rewrites). */
+/** Thin fetch wrapper for the FastAPI backend (proxied via Next rewrites).
+ * Auth rides an httpOnly cookie the browser attaches automatically
+ * (same-origin); a 401 clears the stored profile so the login gate takes
+ * over. */
+
+import { clearSession } from "@/lib/user";
 
 const API_BASE = "/api/v1";
 
@@ -60,7 +65,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, "Cannot reach the API. Is the backend running?");
   }
   if (!response.ok) {
+    // expired/invalid cookie: drop the profile so the login gate renders
+    // (auth endpoints themselves 401 on bad credentials — no session to drop)
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      clearSession();
+    }
     throw await parseError(response);
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json() as Promise<T>;
 }

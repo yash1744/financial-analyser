@@ -19,6 +19,7 @@ from app.models.user import User
 from app.schemas.plaid import AccountsSnapshot, ExchangedPublicToken, LinkTokenResult
 from app.services.exceptions import PlaidItemLoginRequiredError
 from app.utils.crypto import TokenCipher
+from tests.conftest import register_user
 
 
 def account(account_id: str, name: str, type_: str, subtype: str, current: float,
@@ -67,14 +68,11 @@ async def test_account_sync_flow():
     user_id: str | None = None
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post(
-                "/api/v1/users",
-                json={"email": f"acct-sync-{uuid.uuid4().hex[:12]}@example.com"},
-            )
-            user_id = resp.json()["id"]
+            headers, user_id = await register_user(client)
             resp = await client.post(
                 "/api/v1/plaid/exchange-token",
-                json={"user_id": user_id, "public_token": "public-1"},
+                json={"public_token": "public-1"},
+                headers=headers,
             )
             assert resp.status_code == 201, resp.text
             item_id = resp.json()["id"]
@@ -87,7 +85,7 @@ async def test_account_sync_flow():
                 account("loan-1", "Mortgage", "loan", "mortgage", 250000.00),
             ]
             resp = await client.post(
-                "/api/v1/plaid/accounts/sync", json={"user_id": user_id}
+                "/api/v1/plaid/accounts/sync", json={}, headers=headers
             )
             assert resp.status_code == 200, resp.text
             summary = resp.json()["items"][0]
@@ -99,7 +97,8 @@ async def test_account_sync_flow():
             # second sync, nothing changed: no duplicates, no updates
             resp = await client.post(
                 "/api/v1/plaid/accounts/sync",
-                json={"user_id": user_id, "item_id": item_id},
+                json={"item_id": item_id},
+                headers=headers,
             )
             summary = resp.json()["items"][0]
             assert summary["created"] == 0
@@ -111,7 +110,7 @@ async def test_account_sync_flow():
                 "chk-1", "Chase Total Checking", "depository", "checking", 1234.56, 1200.00
             )
             resp = await client.post(
-                "/api/v1/plaid/accounts/sync", json={"user_id": user_id}
+                "/api/v1/plaid/accounts/sync", json={}, headers=headers
             )
             summary = resp.json()["items"][0]
             assert summary["created"] == 0
@@ -120,21 +119,22 @@ async def test_account_sync_flow():
             assert renamed["name"] == "Chase Total Checking"
             assert renamed["current_balance"] == "1234.56"
 
-            # unknown user / item not owned → 404
+            # no token → 401; item not owned → 404
             resp = await client.post(
-                "/api/v1/plaid/accounts/sync", json={"user_id": str(uuid.uuid4())}
+                "/api/v1/plaid/accounts/sync", json={}
             )
-            assert resp.status_code == 404
+            assert resp.status_code == 401
             resp = await client.post(
                 "/api/v1/plaid/accounts/sync",
-                json={"user_id": user_id, "item_id": str(uuid.uuid4())},
+                json={"item_id": str(uuid.uuid4())},
+                headers=headers,
             )
             assert resp.status_code == 404
 
             # Plaid demands re-auth: 409 and the item is flagged in the DB
             fake_plaid.fail_login_required = True
             resp = await client.post(
-                "/api/v1/plaid/accounts/sync", json={"user_id": user_id}
+                "/api/v1/plaid/accounts/sync", json={}, headers=headers
             )
             assert resp.status_code == 409
             assert resp.json()["plaid_error_code"] == "ITEM_LOGIN_REQUIRED"

@@ -6,7 +6,6 @@ repositories, persistence — without calling a provider.
 """
 
 import json
-import uuid
 from collections.abc import AsyncIterator
 
 from httpx import ASGITransport, AsyncClient
@@ -23,6 +22,7 @@ from app.ai.schemas import (
 )
 from app.api.deps import get_llm_client
 from app.main import app
+from tests.conftest import register_user
 
 
 def tool_turn(name: str, arguments: dict, call_id: str = "call-1") -> LLMResponse:
@@ -77,11 +77,10 @@ def install(script: list) -> FakeLLMClient:
     return fake
 
 
-async def create_user(client: AsyncClient) -> str:
-    resp = await client.post(
-        "/api/v1/users", json={"email": f"ai-{uuid.uuid4().hex[:12]}@example.com"}
-    )
-    return resp.json()["id"]
+async def create_user(client: AsyncClient) -> dict[str, str]:
+    """Register a user; returns auth headers (identity rides the token)."""
+    headers, _ = await register_user(client)
+    return headers
 
 
 def parse_sse(body: str) -> list[tuple[str, dict]]:
@@ -104,11 +103,12 @@ async def test_chat_tool_loop_and_persistence():
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            user_id = await create_user(client)
+            headers = await create_user(client)
 
             resp = await client.post(
                 "/api/v1/ai/chat",
-                json={"user_id": user_id, "message": "How much did I spend?"},
+                json={"message": "How much did I spend?"},
+                headers=headers,
             )
             assert resp.status_code == 200, resp.text
             body = resp.json()
@@ -137,10 +137,10 @@ async def test_chat_tool_loop_and_persistence():
             resp = await client.post(
                 "/api/v1/ai/chat",
                 json={
-                    "user_id": user_id,
                     "conversation_id": conversation_id,
                     "message": "Say that again?",
                 },
+                headers=headers,
             )
             assert resp.status_code == 200
             history = fake.calls[2]["messages"]
@@ -163,10 +163,11 @@ async def test_chat_stream_sse_events():
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            user_id = await create_user(client)
+            headers = await create_user(client)
             resp = await client.post(
                 "/api/v1/ai/chat/stream",
-                json={"user_id": user_id, "message": "Any subscriptions?"},
+                json={"message": "Any subscriptions?"},
+                headers=headers,
             )
             assert resp.status_code == 200
             assert resp.headers["content-type"].startswith("text/event-stream")
@@ -206,10 +207,11 @@ async def test_invalid_tool_call_recovers_as_error_result():
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            user_id = await create_user(client)
+            headers = await create_user(client)
             resp = await client.post(
                 "/api/v1/ai/chat",
-                json={"user_id": user_id, "message": "subscriptions?"},
+                json={"message": "subscriptions?"},
+                headers=headers,
             )
             assert resp.status_code == 200
             assert [
@@ -233,9 +235,9 @@ async def test_llm_failure_maps_to_429():
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            user_id = await create_user(client)
+            headers = await create_user(client)
             resp = await client.post(
-                "/api/v1/ai/chat", json={"user_id": user_id, "message": "hi"}
+                "/api/v1/ai/chat", json={"message": "hi"}, headers=headers
             )
             assert resp.status_code == 429
     finally:
@@ -247,11 +249,11 @@ async def test_conversation_ownership_and_missing_user():
     transport = ASGITransport(app=app)
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            user_a = await create_user(client)
-            user_b = await create_user(client)
+            headers_a = await create_user(client)
+            headers_b = await create_user(client)
 
             resp = await client.post(
-                "/api/v1/ai/chat", json={"user_id": user_a, "message": "hi"}
+                "/api/v1/ai/chat", json={"message": "hi"}, headers=headers_a
             )
             conversation_id = resp.json()["conversation_id"]
 
@@ -259,18 +261,15 @@ async def test_conversation_ownership_and_missing_user():
             resp = await client.post(
                 "/api/v1/ai/chat",
                 json={
-                    "user_id": user_b,
                     "conversation_id": conversation_id,
                     "message": "hi",
                 },
+                headers=headers_b,
             )
             assert resp.status_code == 404
 
-            # unknown user
-            resp = await client.post(
-                "/api/v1/ai/chat",
-                json={"user_id": str(uuid.uuid4()), "message": "hi"},
-            )
-            assert resp.status_code == 404
+            # no token → 401
+            resp = await client.post("/api/v1/ai/chat", json={"message": "hi"})
+            assert resp.status_code == 401
     finally:
         app.dependency_overrides.clear()

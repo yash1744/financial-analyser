@@ -123,7 +123,7 @@ class FinanceToolset:
                 ),
                 params_model=TransactionSearchParams,
                 handler=lambda p: self._transactions.list_transactions(
-                    TransactionListQuery(user_id=self._user_id, **p.model_dump())
+                    self._user_id, TransactionListQuery(**p.model_dump())
                 ),
             ),
             ToolSpec(

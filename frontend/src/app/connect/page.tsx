@@ -13,7 +13,6 @@ import { api } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/client";
 import type { TransactionsSyncResponse } from "@/lib/api/types";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRequiredUser } from "@/lib/user";
 
 type Step =
   | { name: "idle" }
@@ -49,7 +48,6 @@ function PlaidLinkLauncher({
 }
 
 export default function ConnectPage() {
-  const user = useRequiredUser();
   const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>({ name: "idle" });
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -57,24 +55,23 @@ export default function ConnectPage() {
   const start = useCallback(async () => {
     setStep({ name: "creating-token" });
     try {
-      const { link_token } = await api.createLinkToken(user.id);
+      const { link_token } = await api.createLinkToken();
       setLinkToken(link_token);
       setStep({ name: "link-open" });
     } catch (error) {
       setStep({ name: "error", error });
     }
-  }, [user.id]);
+  }, []);
 
   const handleLinkSuccess = useCallback(
     async (publicToken: string) => {
       setLinkToken(null);
       setStep({ name: "exchanging" });
       try {
-        const item = await api.exchangePublicToken(user.id, publicToken);
+        const item = await api.exchangePublicToken(publicToken);
         setStep({ name: "syncing", institution: item.institution_name });
-        await api.syncAccounts(user.id, item.id);
+        await api.syncAccounts(item.id);
         const txns: TransactionsSyncResponse = await api.syncTransactions(
-          user.id,
           item.id,
         );
         queryClient.invalidateQueries();
@@ -92,7 +89,7 @@ export default function ConnectPage() {
         }
       }
     },
-    [user.id, queryClient],
+    [queryClient],
   );
 
   const handleLinkExit = useCallback(() => {

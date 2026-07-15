@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Fernet key for encrypting Plaid access tokens at rest
     token_encryption_key: str = ""
 
+    # Auth: JWT bearer tokens. The default secret is for local development
+    # only — set JWT_SECRET_KEY in .env for anything beyond that.
+    jwt_secret_key: str = "dev-secret-change-me--fine-for-local-development-only"
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_hours: int = 24
+
     # LLM chat (app boots fine without a key; /ai endpoints then return 503)
     llm_provider: Literal["anthropic", "openai"] = "anthropic"
     anthropic_api_key: str = ""

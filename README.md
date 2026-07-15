@@ -5,14 +5,18 @@ end-to-end: connect a bank via Link (encrypted access-token storage),
 sync accounts, and sync transactions (cursor-based, idempotent, raw
 payloads kept for reprocessing, auto-categorized from Plaid's taxonomy).
 An LLM chat backend answers questions about the synced data through tool
-calls (Anthropic or OpenAI). Auth lands later.
+calls (Anthropic or OpenAI). JWT authentication protects every endpoint,
+and all data access is scoped to the authenticated user.
 
 ## API
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/health` | Liveness + DB check |
-| POST | `/api/v1/users` | Create a user (temporary scaffolding until auth) |
+| GET | `/api/v1/health` | Liveness + DB check (public) |
+| POST | `/api/v1/auth/register` | Create an account (email + password) → JWT |
+| POST | `/api/v1/auth/login` | Sign in → JWT |
+| POST | `/api/v1/auth/logout` | Clear the auth cookie |
+| GET | `/api/v1/auth/me` | The authenticated user |
 | POST | `/api/v1/plaid/link-token` | Start the Link flow for a user |
 | POST | `/api/v1/plaid/exchange-token` | Exchange `public_token`, persist the connection |
 | POST | `/api/v1/plaid/accounts/sync` | Fetch + upsert accounts for one item or all of a user's items |
@@ -30,8 +34,30 @@ calls (Anthropic or OpenAI). Auth lands later.
 | POST | `/api/v1/ai/chat` | Ask the finance assistant a question (JSON response) |
 | POST | `/api/v1/ai/chat/stream` | Same, streamed as SSE (`token` / `tool` / `done` events) |
 
-Interactive docs at <http://localhost:8000/docs>. `user_id` currently rides
-in request bodies; it moves to the auth context once authentication exists.
+Interactive docs at <http://localhost:8000/docs>. Every endpoint except
+`/health` and `/auth/*` requires authentication — the httpOnly auth
+cookie (browser) or `Authorization: Bearer <token>` (API clients).
+
+## Authentication & authorization
+
+`POST /auth/register` and `/auth/login` issue a stateless HS256 JWT
+(`JWT_SECRET_KEY` in `.env`; an insecure dev default applies when unset,
+expiry via `JWT_EXPIRY_HOURS`). The token is delivered two ways at once:
+an **httpOnly `SameSite=Lax` cookie** (what the browser app uses — JS can
+never read it, so XSS can't exfiltrate the credential, and Lax covers
+CSRF) and the response body (for API clients that send it back as
+`Authorization: Bearer`; the header wins when both are present).
+`POST /auth/logout` clears the cookie. Passwords are bcrypt-hashed
+(`app/services/auth.py`); login returns the same 401 for a wrong password
+and an unknown email so email existence can't be probed. The
+`CurrentUserDep` dependency (`app/api/deps.py`) validates the token on
+every protected request and loads the user — request bodies and query
+strings never carry a user id, so one user cannot address another's data
+at all: reads are scoped through the item→user join, and acting on a
+foreign `item_id`/`conversation_id` yields 404 (existence is not leaked;
+there are no permission tiers, hence no 403s). Accounts created before
+auth existed (`password_hash` NULL) are claimed by registering with the
+same email.
 
 ## Stack
 
@@ -95,8 +121,9 @@ app/
   services/          # business logic: plaid.py (Plaid gateway),
                      #   plaid_link.py (Link flow), account_sync.py,
                      #   transaction_sync.py (write side), queries.py
-                     #   (read side), user.py, exceptions.py (typed
-                     #   errors → HTTP mapping lives in api/errors.py)
+                     #   (read side), auth.py (passwords + JWTs),
+                     #   exceptions.py (typed errors → HTTP mapping
+                     #   lives in api/errors.py)
   repositories/      # all DB access; only layer that touches the session
   schemas/           # Pydantic request/response contracts + PlaidService results
   models/            # SQLAlchemy ORM models (one module per table)

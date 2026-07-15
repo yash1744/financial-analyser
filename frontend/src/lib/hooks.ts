@@ -1,6 +1,8 @@
 "use client";
 
-/** React Query hooks for every backend read + the sync/link mutations. */
+/** React Query hooks for every backend read + the sync/link mutations.
+ * The API identifies the user from the Bearer token; userId appears only
+ * in query keys so one user's cache never leaks into another's session. */
 
 import {
   useMutation,
@@ -13,8 +15,8 @@ import type { TransactionListParams } from "./api/types";
 
 export const queryKeys = {
   accounts: (userId: string) => ["accounts", userId] as const,
-  transactions: (params: TransactionListParams) =>
-    ["transactions", params] as const,
+  transactions: (userId: string, params: TransactionListParams) =>
+    ["transactions", userId, params] as const,
   categories: ["categories"] as const,
   monthlySpending: (userId: string, opts: object) =>
     ["analytics", "monthly-spending", userId, opts] as const,
@@ -29,13 +31,13 @@ export const queryKeys = {
 export function useAccounts(userId: string) {
   return useQuery({
     queryKey: queryKeys.accounts(userId),
-    queryFn: () => api.listAccounts(userId),
+    queryFn: () => api.listAccounts(),
   });
 }
 
-export function useTransactions(params: TransactionListParams) {
+export function useTransactions(userId: string, params: TransactionListParams) {
   return useQuery({
-    queryKey: queryKeys.transactions(params),
+    queryKey: queryKeys.transactions(userId, params),
     queryFn: () => api.listTransactions(params),
     placeholderData: (previous) => previous, // keep the table while paging
   });
@@ -55,7 +57,7 @@ export function useMonthlySpending(
 ) {
   return useQuery({
     queryKey: queryKeys.monthlySpending(userId, opts),
-    queryFn: () => api.monthlySpending(userId, opts),
+    queryFn: () => api.monthlySpending(opts),
   });
 }
 
@@ -65,7 +67,7 @@ export function useCategoryBreakdown(
 ) {
   return useQuery({
     queryKey: queryKeys.categoryBreakdown(userId, opts),
-    queryFn: () => api.categoryBreakdown(userId, opts),
+    queryFn: () => api.categoryBreakdown(opts),
   });
 }
 
@@ -75,24 +77,24 @@ export function useTopMerchants(
 ) {
   return useQuery({
     queryKey: queryKeys.topMerchants(userId, opts),
-    queryFn: () => api.topMerchants(userId, opts),
+    queryFn: () => api.topMerchants(opts),
   });
 }
 
 export function useMonthOverMonth(userId: string, months?: number) {
   return useQuery({
     queryKey: queryKeys.monthOverMonth(userId, months),
-    queryFn: () => api.monthOverMonth(userId, months),
+    queryFn: () => api.monthOverMonth(months),
   });
 }
 
 /** Sync accounts then transactions, and refresh everything derived. */
-export function useFullSync(userId: string) {
+export function useFullSync() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (itemId?: string) => {
-      const accounts = await api.syncAccounts(userId, itemId);
-      const transactions = await api.syncTransactions(userId, itemId);
+      const accounts = await api.syncAccounts(itemId);
+      const transactions = await api.syncTransactions(itemId);
       return { accounts, transactions };
     },
     onSettled: () => {
@@ -103,10 +105,10 @@ export function useFullSync(userId: string) {
   });
 }
 
-export function useAccountsSync(userId: string) {
+export function useAccountsSync() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (itemId?: string) => api.syncAccounts(userId, itemId),
+    mutationFn: (itemId?: string) => api.syncAccounts(itemId),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
     },

@@ -56,7 +56,7 @@ function AccountCard({ account }: { account: Account }) {
 export default function AccountsPage() {
   const user = useRequiredUser();
   const accounts = useAccounts(user.id);
-  const sync = useFullSync(user.id);
+  const sync = useFullSync();
 
   const total = (accounts.data ?? []).reduce(
     (sum, a) => sum + toNumber(a.current_balance),

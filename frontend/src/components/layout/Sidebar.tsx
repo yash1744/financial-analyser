@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { api } from "@/lib/api/endpoints";
 import { useUser } from "@/lib/user";
 
 const links = [
@@ -46,16 +47,24 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 function UserFooter() {
   const { user, clearUser } = useUser();
   if (!user) return null;
+  const signOut = async () => {
+    try {
+      await api.logout(); // clears the httpOnly cookie server-side
+    } catch {
+      // cookie may already be gone; still drop the local profile
+    }
+    clearUser();
+  };
   return (
     <div className="mt-auto border-t border-line pt-4">
       <p className="truncate text-xs text-ink-3" title={user.email}>
         {user.email}
       </p>
       <button
-        onClick={clearUser}
+        onClick={signOut}
         className="mt-1 text-xs text-ink-3 underline-offset-2 hover:text-ink hover:underline"
       >
-        Switch user
+        Sign out
       </button>
     </div>
   );

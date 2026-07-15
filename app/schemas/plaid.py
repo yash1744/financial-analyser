@@ -37,12 +37,7 @@ class TransactionsSyncResult(BaseModel):
 
 
 # --- API request/response contracts ---
-# user_id in request bodies is a stand-in until authentication exists;
-# it will move to the auth context then.
-
-
-class LinkTokenRequest(BaseModel):
-    user_id: uuid.UUID
+# The acting user comes from the auth context, never from request bodies.
 
 
 class LinkTokenResponse(BaseModel):
@@ -51,7 +46,6 @@ class LinkTokenResponse(BaseModel):
 
 
 class ExchangeTokenRequest(BaseModel):
-    user_id: uuid.UUID
     public_token: str = Field(min_length=1, max_length=500)
 
 

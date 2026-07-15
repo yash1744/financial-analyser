@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class AnalyticsRangeQuery(BaseModel):
-    user_id: uuid.UUID  # moves to the auth context once authentication lands
+    # the user comes from the auth context, never from the query string
     start_date: date | None = None  # inclusive
     end_date: date | None = None  # inclusive
 
@@ -34,7 +34,6 @@ class TopMerchantsQuery(AnalyticsRangeQuery):
 
 
 class MonthOverMonthQuery(BaseModel):
-    user_id: uuid.UUID
     months: int = Field(default=6, ge=2, le=24)
 
 

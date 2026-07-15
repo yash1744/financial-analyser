@@ -1,13 +1,10 @@
 "use client";
 
 import { PageHeader } from "@/components/layout/PageHeader";
-import { useRequiredUser } from "@/lib/user";
 
 import { ChatWindow } from "./ChatWindow";
 
 export function AssistantPage() {
-  const user = useRequiredUser();
-
   return (
     // fill the viewport under AppShell's padding so the input stays pinned:
     // mobile has the sticky top bar (~3rem) plus main's py-6
@@ -16,7 +13,7 @@ export function AssistantPage() {
         title="AI Assistant"
         subtitle="Ask questions about your accounts, spending, and subscriptions"
       />
-      <ChatWindow userId={user.id} />
+      <ChatWindow />
     </div>
   );
 }

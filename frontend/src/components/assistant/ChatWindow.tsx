@@ -6,8 +6,8 @@ import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { SuggestedPrompts } from "./SuggestedPrompts";
 
-export function ChatWindow({ userId }: { userId: string }) {
-  const { messages, streaming, send, retry, stop } = useAssistantChat(userId);
+export function ChatWindow() {
+  const { messages, streaming, send, retry, stop } = useAssistantChat();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

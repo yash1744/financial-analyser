@@ -1,7 +1,7 @@
 /** Typed functions for every backend endpoint. The authenticated user is
  * identified by the Bearer token — no user_id parameters. */
 
-import { apiGet, apiPost } from "./client";
+import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from "./client";
 import type {
   Account,
   AccountsSyncResponse,
@@ -13,6 +13,8 @@ import type {
   MonthlySpendingResponse,
   PaginatedTransactions,
   PlaidItem,
+  Receipt,
+  ReceiptDetailsUpdate,
   TopMerchantsResponse,
   TransactionListParams,
   TransactionsSyncResponse,
@@ -63,4 +65,33 @@ export const api = {
 
   monthOverMonth: (months?: number) =>
     apiGet<MonthOverMonthResponse>("/analytics/month-over-month", { months }),
+
+  // --- receipts ---
+
+  getReceipt: (transactionId: string) =>
+    apiGet<Receipt | null>(`/transactions/${transactionId}/receipt`),
+
+  saveReceiptDetails: (transactionId: string, details: ReceiptDetailsUpdate) =>
+    apiPut<Receipt>(`/transactions/${transactionId}/receipt`, details),
+
+  deleteReceipt: (transactionId: string) =>
+    apiDelete<void>(`/transactions/${transactionId}/receipt`),
+
+  uploadReceiptImage: (transactionId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiUpload<Receipt>(
+      `/transactions/${transactionId}/receipt/images`,
+      form,
+    );
+  },
+
+  deleteReceiptImage: (transactionId: string, imageId: string) =>
+    apiDelete<void>(
+      `/transactions/${transactionId}/receipt/images/${imageId}`,
+    ),
+
+  /** Same-origin URL for an image's bytes (auth rides the cookie). */
+  receiptImageUrl: (transactionId: string, imageId: string) =>
+    `/api/v1/transactions/${transactionId}/receipt/images/${imageId}`,
 };

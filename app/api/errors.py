@@ -22,12 +22,14 @@ from app.ai.exceptions import (
 from app.services.exceptions import (
     AuthenticationError,
     ConflictError,
+    InvalidUploadError,
     NotFoundError,
     PlaidConfigurationError,
     PlaidItemLoginRequiredError,
     PlaidServiceError,
     RateLimitedError,
 )
+from app.services.storage import StorageConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,19 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ConflictError)
     async def conflict(request: Request, exc: ConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(InvalidUploadError)
+    async def invalid_upload(request: Request, exc: InvalidUploadError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(StorageConfigurationError)
+    async def storage_misconfigured(
+        request: Request, exc: StorageConfigurationError
+    ) -> JSONResponse:
+        logger.error("object storage configuration error: %s", exc)
+        return JSONResponse(
+            status_code=503, content={"detail": "file storage is not configured"}
+        )
 
     @app.exception_handler(PlaidItemLoginRequiredError)
     async def plaid_login_required(

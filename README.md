@@ -23,6 +23,13 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/transactions/sync` | Pull transaction changes from Plaid (cursor-based, idempotent) |
 | GET | `/api/v1/accounts` | A user's synced accounts (optionally one item's) |
 | GET | `/api/v1/transactions` | Filterable, sortable, paginated transactions |
+| GET | `/api/v1/transactions/{id}` | A single transaction (scoped to the user) |
+| GET | `/api/v1/transactions/{id}/receipt` | The transaction's receipt (details + image metadata), or null |
+| PUT | `/api/v1/transactions/{id}/receipt` | Create/replace the receipt's details |
+| DELETE | `/api/v1/transactions/{id}/receipt` | Remove the receipt and its stored images |
+| POST | `/api/v1/transactions/{id}/receipt/images` | Upload one image (multipart `file`; JPEG/PNG/WebP, ≤10/txn) |
+| GET | `/api/v1/transactions/{id}/receipt/images/{image_id}` | The image bytes (auth-gated) |
+| DELETE | `/api/v1/transactions/{id}/receipt/images/{image_id}` | Delete one image |
 | GET | `/api/v1/categories` | All categories (flat list with parent ids) |
 | GET | `/api/v1/analytics/monthly-spending` | Spending / income / net per calendar month |
 | GET | `/api/v1/analytics/category-breakdown` | Spending by category with % shares |
@@ -57,9 +64,25 @@ at all: reads are scoped through the item→user join, and acting on a
 foreign `item_id`/`conversation_id` yields 404 (existence is not leaked;
 there are no permission tiers, hence no 403s).
 
+## Receipts
+
+Each transaction can carry one **receipt**: user-entered details (merchant,
+date, notes, tax/tip, comments) plus up to **10 images** (JPEG/PNG/WebP).
+Details and the transaction summary live in Postgres (`receipts`,
+`receipt_images`); image bytes go to object storage. `STORAGE_BACKEND`
+selects the backend: `local` writes under `LOCAL_STORAGE_DIR` (dev, no
+cloud credentials), `r2` uses **Cloudflare R2** via its S3-compatible API
+(`R2_*`). Uploads are validated by declared type, size
+(`RECEIPT_MAX_IMAGE_BYTES`), and magic bytes; storage keys are always
+server-generated uuid paths (never derived from the filename). Image bytes
+are served back through the auth-gated API, never exposed from storage
+directly. Everything is scoped through the transaction→account→item→user
+chain, so a foreign transaction id is indistinguishable from a missing one
+(404).
+
 ## Stack
 
-Python 3.13 · FastAPI · PostgreSQL 17 · SQLAlchemy 2 (async) · Alembic · Pydantic v2 · uv · Docker
+Python 3.13 · FastAPI · PostgreSQL 17 · SQLAlchemy 2 (async) · Alembic · Pydantic v2 · boto3 (R2) · uv · Docker
 
 ## Frontend
 

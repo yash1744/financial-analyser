@@ -41,6 +41,19 @@ class TransactionRepository(BaseRepository):
         self.session.add(transaction)
         return transaction
 
+    async def get_for_user(
+        self, transaction_id: uuid.UUID, user_id: uuid.UUID
+    ) -> Transaction | None:
+        """The transaction only if it belongs to this user (via the
+        account→item→user chain); None hides foreign rows entirely."""
+        result = await self.session.execute(
+            select(Transaction)
+            .join(Account, Transaction.account_id == Account.id)
+            .join(PlaidItem, Account.plaid_item_id == PlaidItem.id)
+            .where(Transaction.id == transaction_id, PlaidItem.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+
     async def search(
         self,
         *,

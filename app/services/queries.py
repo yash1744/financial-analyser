@@ -42,6 +42,14 @@ class TransactionQueryService:
         self.users = UserRepository(session)
         self.transactions = TransactionRepository(session)
 
+    async def get_transaction(
+        self, user_id: uuid.UUID, transaction_id: uuid.UUID
+    ) -> TransactionResponse:
+        transaction = await self.transactions.get_for_user(transaction_id, user_id)
+        if transaction is None:
+            raise NotFoundError(f"transaction {transaction_id} does not exist")
+        return TransactionResponse.model_validate(transaction)
+
     async def list_transactions(
         self, user_id: uuid.UUID, query: TransactionListQuery
     ) -> PaginatedTransactionsResponse:

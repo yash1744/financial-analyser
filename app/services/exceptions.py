@@ -17,6 +17,10 @@ class AuthenticationError(Exception):
     """Missing/invalid credentials or token. Maps to HTTP 401."""
 
 
+class InvalidUploadError(Exception):
+    """An uploaded file is unusable (type/size/content). Maps to HTTP 400."""
+
+
 class RateLimitedError(Exception):
     """Too many attempts. Maps to HTTP 429 with Retry-After."""
 

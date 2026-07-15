@@ -8,6 +8,7 @@ import type {
   AuthResponse,
   Category,
   CategoryBreakdownResponse,
+  DetailResponse,
   LinkTokenResponse,
   MonthOverMonthResponse,
   MonthlySpendingResponse,
@@ -28,6 +29,18 @@ export const api = {
     apiPost<AuthResponse>("/auth/login", { email, password }),
 
   logout: () => apiPost<void>("/auth/logout", {}),
+
+  resendVerification: () =>
+    apiPost<DetailResponse>("/auth/verify-email/request", {}),
+
+  verifyEmail: (token: string) =>
+    apiPost<DetailResponse>("/auth/verify-email/confirm", { token }),
+
+  forgotPassword: (email: string) =>
+    apiPost<DetailResponse>("/auth/forgot-password", { email }),
+
+  resetPassword: (token: string, password: string) =>
+    apiPost<DetailResponse>("/auth/reset-password", { token, password }),
 
   createLinkToken: () => apiPost<LinkTokenResponse>("/plaid/link-token", {}),
 

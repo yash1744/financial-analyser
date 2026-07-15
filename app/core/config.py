@@ -47,6 +47,20 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiry_hours: int = 24
 
+    # Email delivery. The console backend logs messages instead of sending
+    # them — the verification/reset flows work locally with no SMTP server.
+    email_backend: Literal["console", "smtp"] = "console"
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    email_from: str = "Finance <no-reply@localhost>"
+    # Browser-facing origin used to build emailed links
+    app_base_url: str = "http://localhost:3000"
+    email_verification_ttl_hours: int = 24
+    password_reset_ttl_minutes: int = 60
+
     @model_validator(mode="after")
     def _require_production_secrets(self) -> Self:
         """Refuse to run outside local dev with missing or default secrets.

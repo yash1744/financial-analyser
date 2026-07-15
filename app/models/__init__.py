@@ -1,6 +1,7 @@
 """ORM models. Importing this package registers all tables on Base.metadata."""
 
 from app.models.account import Account
+from app.models.auth_token import AuthToken
 from app.models.category import Category
 from app.models.conversation import Conversation
 from app.models.message import Message
@@ -13,6 +14,7 @@ from app.models.user import User
 
 __all__ = [
     "Account",
+    "AuthToken",
     "Category",
     "Conversation",
     "Message",

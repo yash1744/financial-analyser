@@ -25,6 +25,7 @@ from app.models.user import User
 from app.services.account_sync import AccountSyncService
 from app.services.analytics import AnalyticsService
 from app.services.auth import AuthService
+from app.services.email import EmailSender, build_email_sender
 from app.services.exceptions import AuthenticationError
 from app.services.health import HealthService
 from app.services.insights import InsightsService
@@ -44,8 +45,17 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
-def get_auth_service(session: DbSessionDep, settings: SettingsDep) -> AuthService:
-    return AuthService(session=session, settings=settings)
+def get_email_sender(settings: SettingsDep) -> EmailSender:
+    return build_email_sender(settings)
+
+
+EmailSenderDep = Annotated[EmailSender, Depends(get_email_sender)]
+
+
+def get_auth_service(
+    session: DbSessionDep, settings: SettingsDep, email_sender: EmailSenderDep
+) -> AuthService:
+    return AuthService(session=session, settings=settings, email_sender=email_sender)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]

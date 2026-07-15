@@ -18,7 +18,16 @@ from app.api.deps import (
 )
 from app.core.config import Settings
 from app.core.rate_limit import SlidingWindowLimiter
-from app.schemas.auth import AuthUser, LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import (
+    AuthUser,
+    DetailResponse,
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    VerifyEmailRequest,
+)
 from app.services.exceptions import RateLimitedError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -97,3 +106,56 @@ async def logout(response: Response) -> None:
 @router.get("/me", response_model=AuthUser)
 async def me(user: CurrentUserDep) -> AuthUser:
     return AuthUser.model_validate(user)
+
+
+@router.post(
+    "/verify-email/request",
+    response_model=DetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def request_email_verification(
+    user: CurrentUserDep, auth: AuthServiceDep
+) -> DetailResponse:
+    """(Re)send the verification email for the signed-in user."""
+    sent = await auth.request_email_verification(user)
+    return DetailResponse(
+        detail="verification email sent" if sent else "email is already verified"
+    )
+
+
+@router.post("/verify-email/confirm", response_model=DetailResponse)
+async def confirm_email_verification(
+    body: VerifyEmailRequest, auth: AuthServiceDep
+) -> DetailResponse:
+    """Redeem a verification token from the emailed link. Unauthenticated:
+    the link is opened from the email, often outside a session."""
+    await auth.verify_email(body.token)
+    return DetailResponse(detail="email verified")
+
+
+@router.post(
+    "/forgot-password",
+    response_model=DetailResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    auth: AuthServiceDep,
+    limiter: AuthRateLimiterDep,
+) -> DetailResponse:
+    """Always answers 202 with the same body — whether or not the email
+    belongs to an account must not be observable."""
+    _throttle(request, body.email, limiter)
+    await auth.request_password_reset(body.email)
+    return DetailResponse(
+        detail="if that email is registered, a reset link is on its way"
+    )
+
+
+@router.post("/reset-password", response_model=DetailResponse)
+async def reset_password(
+    body: ResetPasswordRequest, auth: AuthServiceDep
+) -> DetailResponse:
+    await auth.reset_password(body.token, body.password)
+    return DetailResponse(detail="password updated — you can sign in now")

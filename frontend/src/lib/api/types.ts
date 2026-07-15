@@ -5,7 +5,12 @@
 export interface User {
   id: string;
   email: string;
+  email_verified: boolean;
   created_at: string;
+}
+
+export interface DetailResponse {
+  detail: string;
 }
 
 export interface AuthResponse {

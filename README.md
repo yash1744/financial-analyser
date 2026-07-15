@@ -17,6 +17,10 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/auth/login` | Sign in → JWT |
 | POST | `/api/v1/auth/logout` | Clear the auth cookie |
 | GET | `/api/v1/auth/me` | The authenticated user |
+| POST | `/api/v1/auth/verify-email/request` | (Re)send the verification email |
+| POST | `/api/v1/auth/verify-email/confirm` | Redeem an emailed verification token |
+| POST | `/api/v1/auth/forgot-password` | Email a password-reset link (always 202) |
+| POST | `/api/v1/auth/reset-password` | Set a new password via an emailed token |
 | POST | `/api/v1/plaid/link-token` | Start the Link flow for a user |
 | POST | `/api/v1/plaid/exchange-token` | Exchange `public_token`, persist the connection |
 | POST | `/api/v1/plaid/accounts/sync` | Fetch + upsert accounts for one item or all of a user's items |
@@ -64,6 +68,19 @@ strings never carry a user id, so one user cannot address another's data
 at all: reads are scoped through the item→user join, and acting on a
 foreign `item_id`/`conversation_id` yields 404 (existence is not leaked;
 there are no permission tiers, hence no 403s).
+
+**Email verification & password reset**: registration emails a
+verification link; `/auth/forgot-password` emails a reset link and always
+answers 202 with the same body so account existence can't be probed.
+Both links carry a random single-use token that expires
+(`EMAIL_VERIFICATION_TTL_HOURS`, `PASSWORD_RESET_TTL_MINUTES`); only the
+SHA-256 hash is stored (`auth_tokens` table), reissuing invalidates the
+previous link, and a successful reset kills all outstanding reset tokens.
+Unverified users can still log in (this app predates verification —
+blocking would lock out existing accounts); clients read `email_verified`
+from `/auth/me`. Delivery uses `EMAIL_BACKEND`: `console` (default) logs
+the email so the flows work with no SMTP server, `smtp` sends via
+`SMTP_*`/`EMAIL_FROM`; links point at `APP_BASE_URL`.
 
 ## Receipts
 

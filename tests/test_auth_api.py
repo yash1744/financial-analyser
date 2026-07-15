@@ -168,32 +168,32 @@ async def test_cross_user_isolation():
         await session.commit()
 
 
-async def test_pre_auth_account_can_be_claimed():
-    """Rows created before auth existed (password_hash NULL) are claimed
-    by registering with the same email; their data is preserved."""
+async def test_pre_auth_account_is_locked_out():
+    """Rows created before auth existed (password_hash NULL) cannot be
+    taken over: registering their email conflicts (emails are unverified,
+    so 'claiming' would be an account takeover) and login is refused."""
     email = f"legacy-{uuid.uuid4().hex[:12]}@example.com"
     async with SessionFactory() as session:
         legacy = User(email=email)  # no password_hash
         session.add(legacy)
         await session.commit()
         await session.refresh(legacy)
-        legacy_id = str(legacy.id)
+        legacy_id = legacy.id
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/v1/auth/register", json={"email": email, "password": TEST_PASSWORD}
         )
-        assert resp.status_code == 201
-        assert resp.json()["user"]["id"] == legacy_id  # same row, not a new one
-
-        # a second registration attempt is now a normal conflict
-        resp = await client.post(
-            "/api/v1/auth/register", json={"email": email, "password": "other-pass-123"}
-        )
         assert resp.status_code == 409
 
+        resp = await client.post(
+            "/api/v1/auth/login", json={"email": email, "password": TEST_PASSWORD}
+        )
+        assert resp.status_code == 401
+
     async with SessionFactory() as session:
-        user = await session.get(User, uuid.UUID(legacy_id))
+        user = await session.get(User, legacy_id)
+        assert user.password_hash is None  # row untouched by the attempts
         await session.delete(user)
         await session.commit()

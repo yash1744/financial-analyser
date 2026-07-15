@@ -7,6 +7,7 @@ hit the most specific handler registered.
 """
 
 import logging
+import math
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -25,6 +26,7 @@ from app.services.exceptions import (
     PlaidConfigurationError,
     PlaidItemLoginRequiredError,
     PlaidServiceError,
+    RateLimitedError,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +41,15 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=401,
             content={"detail": str(exc)},
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.exception_handler(RateLimitedError)
+    async def rate_limited(request: Request, exc: RateLimitedError) -> JSONResponse:
+        retry_after = max(1, math.ceil(exc.retry_after_seconds))
+        return JSONResponse(
+            status_code=429,
+            content={"detail": str(exc)},
+            headers={"Retry-After": str(retry_after)},
         )
 
     @app.exception_handler(NotFoundError)

@@ -72,18 +72,11 @@ class AuthService:
 
     async def register(self, email: str, password: str) -> tuple[User, str]:
         normalized = email.strip().lower()
-        existing = await self.users.get_by_email(normalized)
-        if existing is not None:
-            # Rows created before auth existed have no password; let them
-            # be claimed on first registration. (Fine for this app's data:
-            # emails were never verified. Remove once all rows have hashes.)
-            if existing.password_hash is not None:
-                raise ConflictError(f"a user with email {normalized!r} already exists")
-            existing.password_hash = hash_password(password)
-            await self.session.commit()
-            await self.session.refresh(existing)
-            logger.info("Claimed pre-auth account %s", existing.id)
-            return existing, self.create_token(existing.id)
+        # An existing email always conflicts — including rows created
+        # before auth existed (password_hash NULL): emails are unverified,
+        # so letting those be "claimed" would be an account takeover.
+        if await self.users.get_by_email(normalized) is not None:
+            raise ConflictError(f"a user with email {normalized!r} already exists")
 
         user = await self.users.create(normalized, password_hash=hash_password(password))
         try:

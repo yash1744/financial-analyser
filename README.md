@@ -55,9 +55,7 @@ every protected request and loads the user — request bodies and query
 strings never carry a user id, so one user cannot address another's data
 at all: reads are scoped through the item→user join, and acting on a
 foreign `item_id`/`conversation_id` yields 404 (existence is not leaked;
-there are no permission tiers, hence no 403s). Accounts created before
-auth existed (`password_hash` NULL) are claimed by registering with the
-same email.
+there are no permission tiers, hence no 403s).
 
 ## Stack
 

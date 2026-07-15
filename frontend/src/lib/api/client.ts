@@ -92,3 +92,21 @@ export function apiPost<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
 }
+
+export function apiPut<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function apiDelete<T>(path: string): Promise<T> {
+  return request<T>(path, { method: "DELETE" });
+}
+
+/** Multipart upload. The browser sets the multipart Content-Type (with
+ * boundary) itself, so we must not set it here. */
+export function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  return request<T>(path, { method: "POST", body: formData });
+}

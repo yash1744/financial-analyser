@@ -9,6 +9,9 @@ __pycache__/
 .env
 .env.local
 
+# Local receipt image storage (STORAGE_BACKEND=local)
+.data/
+
 # OS / editor
 .DS_Store
 .idea/

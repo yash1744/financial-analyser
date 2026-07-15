@@ -14,6 +14,9 @@ Next.js frontend for the FastAPI backend in the repository root.
 | `/connect` | Plaid Link flow: link token → Link UI → exchange → auto-sync |
 | `/analytics` | Monthly spending/income, month-over-month trend, category breakdown, top merchants |
 | `/assistant` | AI chat over your finances — streamed SSE answers, markdown, tool audit trail |
+| `/verify-email` | Landing page for the emailed verification link (public) |
+| `/forgot-password` | Request a password-reset email (public) |
+| `/reset-password` | Choose a new password via the emailed link (public) |
 
 ## Running
 
@@ -33,6 +36,12 @@ browser attaches it to every same-origin request automatically.
 localStorage (`finance.profile`) holds only the id/email for display.
 A 401 clears the profile and returns to the gate; "Sign out" calls
 `/auth/logout` to clear the cookie.
+
+Registration sends an email-verification link and the login form offers a
+"Forgot your password?" flow. With the backend's default
+`EMAIL_BACKEND=console` the emailed link is printed in the backend logs —
+open it in the browser to complete the flow locally. The three auth-flow
+routes are public (not behind the login gate).
 
 In Plaid sandbox, banks accept the test credentials `user_good` / `pass_good`.
 

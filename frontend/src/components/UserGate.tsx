@@ -6,6 +6,7 @@
  */
 
 import { useMutation } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { ApiError } from "@/lib/api/client";
@@ -97,6 +98,17 @@ function AuthForm() {
             {mode === "login" ? "Sign in" : "Register"}
           </Button>
         </form>
+
+        {mode === "login" && (
+          <p className="mt-3 text-center text-xs">
+            <Link
+              href="/forgot-password"
+              className="text-ink-3 underline-offset-2 hover:text-accent hover:underline"
+            >
+              Forgot your password?
+            </Link>
+          </p>
+        )}
 
         <p className="mt-4 text-center text-xs text-ink-3">
           {mode === "login" ? (

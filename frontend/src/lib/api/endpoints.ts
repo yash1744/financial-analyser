@@ -1,7 +1,7 @@
 /** Typed functions for every backend endpoint. The authenticated user is
  * identified by the Bearer token — no user_id parameters. */
 
-import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from "./client";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, apiUpload } from "./client";
 import type {
   Account,
   AccountsSyncResponse,
@@ -46,6 +46,9 @@ export const api = {
 
   listAccounts: (itemId?: string) =>
     apiGet<Account[]>("/accounts", { item_id: itemId }),
+
+  setAccountNickname: (accountId: string, nickname: string | null) =>
+    apiPatch<Account>(`/accounts/${accountId}`, { nickname }),
 
   listTransactions: (params: TransactionListParams) =>
     apiGet<PaginatedTransactions>("/transactions", { ...params }),

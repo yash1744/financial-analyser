@@ -74,7 +74,7 @@ export function TransactionFilters({
           <option value="">All</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name}
+              {a.display_name}
             </option>
           ))}
         </Select>

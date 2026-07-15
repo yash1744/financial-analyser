@@ -94,7 +94,7 @@ export function TransactionsTable({
                   </Badge>
                 </td>
                 <td className="hidden max-w-[12rem] truncate px-3 py-3 text-ink-2 lg:table-cell">
-                  {accountById.get(t.account_id)?.name ?? "—"}
+                  {accountById.get(t.account_id)?.display_name ?? "—"}
                 </td>
                 <td className="px-3 py-3">
                   {t.pending ? (

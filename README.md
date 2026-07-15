@@ -22,6 +22,7 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/plaid/accounts/sync` | Fetch + upsert accounts for one item or all of a user's items |
 | POST | `/api/v1/transactions/sync` | Pull transaction changes from Plaid (cursor-based, idempotent) |
 | GET | `/api/v1/accounts` | A user's synced accounts (optionally one item's) |
+| PATCH | `/api/v1/accounts/{id}` | Set or clear an account nickname (null/blank clears) |
 | GET | `/api/v1/transactions` | Filterable, sortable, paginated transactions |
 | GET | `/api/v1/transactions/{id}` | A single transaction (scoped to the user) |
 | GET | `/api/v1/transactions/{id}/receipt` | The transaction's receipt (details + image metadata), or null |
@@ -79,6 +80,16 @@ are served back through the auth-gated API, never exposed from storage
 directly. Everything is scoped through the transaction→account→item→user
 chain, so a foreign transaction id is indistinguishable from a missing one
 (404).
+
+## Account nicknames
+
+Each account carries an optional user **nickname** (`accounts.nickname`)
+alongside Plaid's `name`. `PATCH /accounts/{id}` sets it; a null or
+blank value clears it. Account responses return all three of `name` (the
+untouched Plaid original), `nickname`, and `display_name` (the nickname
+when set, else the name) so clients can render the nickname while still
+showing the source name. Plaid syncs only write `name`, so nicknames
+survive re-syncs even when the bank renames the account.
 
 ## Stack
 

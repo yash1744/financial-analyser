@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AccountResponse(BaseModel):
@@ -9,12 +9,31 @@ class AccountResponse(BaseModel):
 
     id: uuid.UUID
     plaid_account_id: str
+    # `name` is always Plaid's original; `nickname` is the user override;
+    # `display_name` is what the UI should render (nickname or name)
     name: str
+    nickname: str | None
+    display_name: str
     account_type: str
     account_subtype: str | None
     current_balance: Decimal | None
     available_balance: Decimal | None
     currency: str
+
+
+class AccountNicknameUpdate(BaseModel):
+    """Set or clear an account nickname. null / omitted clears it, reverting
+    the display to the original Plaid name."""
+
+    nickname: str | None = Field(default=None, max_length=100)
+
+    @field_validator("nickname")
+    @classmethod
+    def _normalize(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None  # blank/whitespace-only clears the nickname
 
 
 class AccountsSyncRequest(BaseModel):

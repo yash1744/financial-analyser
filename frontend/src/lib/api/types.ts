@@ -19,7 +19,12 @@ export interface AuthResponse {
 export interface Account {
   id: string;
   plaid_account_id: string;
+  /** The original Plaid name (refreshed on every sync). */
   name: string;
+  /** User override, or null when unset. */
+  nickname: string | null;
+  /** What to display: nickname when set, else name. */
+  display_name: string;
   account_type: string;
   account_subtype: string | null;
   current_balance: string | null;

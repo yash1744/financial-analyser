@@ -22,6 +22,7 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/plaid/accounts/sync` | Fetch + upsert accounts for one item or all of a user's items |
 | POST | `/api/v1/transactions/sync` | Pull transaction changes from Plaid (cursor-based, idempotent) |
 | GET | `/api/v1/accounts` | A user's synced accounts (optionally one item's) |
+| PATCH | `/api/v1/accounts/{id}` | Set or clear an account nickname (null/blank clears) |
 | GET | `/api/v1/transactions` | Filterable, sortable, paginated transactions |
 | GET | `/api/v1/categories` | All categories (flat list with parent ids) |
 | GET | `/api/v1/analytics/monthly-spending` | Spending / income / net per calendar month |
@@ -56,6 +57,16 @@ strings never carry a user id, so one user cannot address another's data
 at all: reads are scoped through the item→user join, and acting on a
 foreign `item_id`/`conversation_id` yields 404 (existence is not leaked;
 there are no permission tiers, hence no 403s).
+
+## Account nicknames
+
+Each account carries an optional user **nickname** (`accounts.nickname`)
+alongside Plaid's `name`. `PATCH /accounts/{id}` sets it; a null or
+blank value clears it. Account responses return all three of `name` (the
+untouched Plaid original), `nickname`, and `display_name` (the nickname
+when set, else the name) so clients can render the nickname while still
+showing the source name. Plaid syncs only write `name`, so nicknames
+survive re-syncs even when the bank renames the account.
 
 ## Stack
 

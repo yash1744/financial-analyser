@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-query";
 
 import { api } from "./api/endpoints";
-import type { TransactionListParams } from "./api/types";
+import type { Account, TransactionListParams } from "./api/types";
 
 export const queryKeys = {
   accounts: (userId: string) => ["accounts", userId] as const,
@@ -101,6 +101,27 @@ export function useFullSync() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["analytics"] });
+    },
+  });
+}
+
+/** Set or clear an account nickname, updating the accounts cache in place. */
+export function useSetAccountNickname(userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      accountId,
+      nickname,
+    }: {
+      accountId: string;
+      nickname: string | null;
+    }) => api.setAccountNickname(accountId, nickname),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(
+        queryKeys.accounts(userId),
+        (previous: Account[] | undefined) =>
+          previous?.map((a) => (a.id === updated.id ? updated : a)),
+      );
     },
   });
 }

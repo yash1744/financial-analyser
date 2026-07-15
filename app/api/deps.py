@@ -35,6 +35,8 @@ from app.services.queries import (
     CategoryQueryService,
     TransactionQueryService,
 )
+from app.services.receipts import ReceiptService
+from app.services.storage import ObjectStorage, build_object_storage
 from app.services.transaction_sync import TransactionSyncService
 from app.utils.crypto import TokenCipher
 
@@ -163,6 +165,22 @@ TransactionQueryServiceDep = Annotated[
     TransactionQueryService, Depends(get_transaction_query_service)
 ]
 CategoryQueryServiceDep = Annotated[CategoryQueryService, Depends(get_category_query_service)]
+
+
+def get_object_storage(settings: SettingsDep) -> ObjectStorage:
+    return build_object_storage(settings)
+
+
+ObjectStorageDep = Annotated[ObjectStorage, Depends(get_object_storage)]
+
+
+def get_receipt_service(
+    session: DbSessionDep, storage: ObjectStorageDep, settings: SettingsDep
+) -> ReceiptService:
+    return ReceiptService(session=session, storage=storage, settings=settings)
+
+
+ReceiptServiceDep = Annotated[ReceiptService, Depends(get_receipt_service)]
 
 
 def get_analytics_service(session: DbSessionDep) -> AnalyticsService:

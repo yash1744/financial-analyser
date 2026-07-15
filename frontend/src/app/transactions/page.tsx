@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { TransactionDetailModal } from "@/components/transactions/TransactionDetailModal";
 import { TransactionFilters, type Filters } from "@/components/transactions/TransactionFilters";
 import { TransactionsTable } from "@/components/transactions/TransactionsTable";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonLines } from "@/components/ui/Skeleton";
 import { useAccounts, useCategories, useTransactions } from "@/lib/hooks";
+import type { Transaction } from "@/lib/api/types";
 import { useRequiredUser } from "@/lib/user";
 
 const PAGE_SIZE = 25;
@@ -31,6 +33,7 @@ export default function TransactionsPage() {
   const user = useRequiredUser();
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<Transaction | null>(null);
 
   const accounts = useAccounts(user.id);
   const categories = useCategories();
@@ -111,6 +114,7 @@ export default function TransactionsPage() {
               accounts={accounts.data ?? []}
               categories={categories.data ?? []}
               faded={transactions.isPlaceholderData}
+              onSelect={setSelected}
             />
             <div className="flex items-center justify-between border-t border-line px-5 py-3">
               <p className="text-xs text-ink-3">
@@ -136,6 +140,15 @@ export default function TransactionsPage() {
           </>
         ) : null}
       </Card>
+
+      {selected && (
+        <TransactionDetailModal
+          transaction={selected}
+          account={accounts.data?.find((a) => a.id === selected.account_id)}
+          category={categories.data?.find((c) => c.id === selected.category_id)}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </>
   );
 }

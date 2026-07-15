@@ -28,12 +28,15 @@ export function TransactionsTable({
   accounts,
   categories,
   faded = false,
+  onSelect,
 }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   /** true while stale data is shown during a page change */
   faded?: boolean;
+  /** open the detail/receipt view for a transaction */
+  onSelect?: (transaction: Transaction) => void;
 }) {
   const accountById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a])),
@@ -62,13 +65,18 @@ export function TransactionsTable({
             </th>
             <th className="px-3 py-3 font-medium">Status</th>
             <th className="px-5 py-3 text-right font-medium">Amount</th>
+            <th className="w-8 px-3 py-3" aria-label="Receipt" />
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
           {transactions.map((t) => {
             const inflow = toNumber(t.amount) < 0;
             return (
-              <tr key={t.id} className="hover:bg-line/50">
+              <tr
+                key={t.id}
+                onClick={() => onSelect?.(t)}
+                className={`hover:bg-line/50 ${onSelect ? "cursor-pointer" : ""}`}
+              >
                 <td className="whitespace-nowrap px-5 py-3 text-ink-2">
                   {formatDate(t.transaction_date)}
                 </td>
@@ -103,6 +111,7 @@ export function TransactionsTable({
                   {inflow ? "+" : "−"}
                   {formatMoney(Math.abs(toNumber(t.amount)), t.currency)}
                 </td>
+                <td className="px-3 py-3 text-right text-ink-3">›</td>
               </tr>
             );
           })}

@@ -11,7 +11,11 @@ import {
 } from "@tanstack/react-query";
 
 import { api } from "./api/endpoints";
-import type { Account, TransactionListParams } from "./api/types";
+import type {
+  Account,
+  ReceiptDetailsUpdate,
+  TransactionListParams,
+} from "./api/types";
 
 export const queryKeys = {
   accounts: (userId: string) => ["accounts", userId] as const,
@@ -26,6 +30,7 @@ export const queryKeys = {
     ["analytics", "top-merchants", userId, opts] as const,
   monthOverMonth: (userId: string, months: number | undefined) =>
     ["analytics", "month-over-month", userId, months] as const,
+  receipt: (transactionId: string) => ["receipt", transactionId] as const,
 };
 
 export function useAccounts(userId: string) {
@@ -124,6 +129,45 @@ export function useSetAccountNickname(userId: string) {
       );
     },
   });
+}
+
+export function useReceipt(transactionId: string) {
+  return useQuery({
+    queryKey: queryKeys.receipt(transactionId),
+    queryFn: () => api.getReceipt(transactionId),
+  });
+}
+
+/** Details save, image upload, and both delete flows for one transaction's
+ * receipt. Each mutation writes the fresh receipt (or null) straight into
+ * the query cache so the panel updates without a refetch. */
+export function useReceiptMutations(transactionId: string) {
+  const queryClient = useQueryClient();
+  const key = queryKeys.receipt(transactionId);
+
+  const saveDetails = useMutation({
+    mutationFn: (details: ReceiptDetailsUpdate) =>
+      api.saveReceiptDetails(transactionId, details),
+    onSuccess: (receipt) => queryClient.setQueryData(key, receipt),
+  });
+
+  const uploadImage = useMutation({
+    mutationFn: (file: File) => api.uploadReceiptImage(transactionId, file),
+    onSuccess: (receipt) => queryClient.setQueryData(key, receipt),
+  });
+
+  const deleteImage = useMutation({
+    mutationFn: (imageId: string) =>
+      api.deleteReceiptImage(transactionId, imageId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+
+  const deleteReceipt = useMutation({
+    mutationFn: () => api.deleteReceipt(transactionId),
+    onSuccess: () => queryClient.setQueryData(key, null),
+  });
+
+  return { saveDetails, uploadImage, deleteImage, deleteReceipt };
 }
 
 export function useAccountsSync() {

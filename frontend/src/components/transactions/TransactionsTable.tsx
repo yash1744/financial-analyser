@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import type {
@@ -10,6 +10,10 @@ import type {
   TransactionClassification,
 } from "@/lib/api/types";
 import { formatDate, formatMoney, toNumber } from "@/lib/format";
+
+// Columns rendered per transaction row (Merchant, Category, Type, Account,
+// Status, Amount, chevron) — the date header row spans all of them.
+const COLUMN_COUNT = 7;
 
 const CLASSIFICATION_TONES: Record<
   TransactionClassification,
@@ -22,6 +26,32 @@ const CLASSIFICATION_TONES: Record<
   transfer: "neutral",
   unknown: "neutral",
 };
+
+interface TransactionGroup {
+  date: string;
+  transactions: Transaction[];
+}
+
+/** Bucket transactions by transaction_date, one header per distinct date.
+ * Each date's rows keep their relative order from the input (whatever the
+ * active sort is), so this holds regardless of sort_by: under the default
+ * date sort, dates are already contiguous and this is a no-op reshuffle;
+ * under amount/merchant sort, same-date rows are pulled together (in their
+ * sorted relative order) instead of appearing under a repeated header. */
+function groupByDate(transactions: Transaction[]): TransactionGroup[] {
+  const order: string[] = [];
+  const byDate = new Map<string, Transaction[]>();
+  for (const t of transactions) {
+    const bucket = byDate.get(t.transaction_date);
+    if (bucket) {
+      bucket.push(t);
+    } else {
+      byDate.set(t.transaction_date, [t]);
+      order.push(t.transaction_date);
+    }
+  }
+  return order.map((date) => ({ date, transactions: byDate.get(date)! }));
+}
 
 export function TransactionsTable({
   transactions,
@@ -46,6 +76,7 @@ export function TransactionsTable({
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
   );
+  const groups = useMemo(() => groupByDate(transactions), [transactions]);
 
   return (
     <div className="overflow-x-auto">
@@ -54,8 +85,7 @@ export function TransactionsTable({
       >
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-3">
-            <th className="px-5 py-3 font-medium">Date</th>
-            <th className="px-3 py-3 font-medium">Merchant</th>
+            <th className="px-5 py-3 font-medium">Merchant</th>
             <th className="hidden px-3 py-3 font-medium md:table-cell">
               Category
             </th>
@@ -69,52 +99,62 @@ export function TransactionsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
-          {transactions.map((t) => {
-            const inflow = toNumber(t.amount) < 0;
-            return (
-              <tr
-                key={t.id}
-                onClick={() => onSelect?.(t)}
-                className={`hover:bg-line/50 ${onSelect ? "cursor-pointer" : ""}`}
-              >
-                <td className="whitespace-nowrap px-5 py-3 text-ink-2">
-                  {formatDate(t.transaction_date)}
-                </td>
-                <td className="max-w-[16rem] truncate px-3 py-3 text-ink">
-                  {t.merchant_name ?? "Unknown merchant"}
-                </td>
-                <td className="hidden px-3 py-3 text-ink-2 md:table-cell">
-                  {t.category_id
-                    ? (categoryById.get(t.category_id)?.name ?? "—")
-                    : "Uncategorized"}
-                </td>
-                <td className="px-3 py-3">
-                  <Badge tone={CLASSIFICATION_TONES[t.classification]}>
-                    {t.classification}
-                  </Badge>
-                </td>
-                <td className="hidden max-w-[12rem] truncate px-3 py-3 text-ink-2 lg:table-cell">
-                  {accountById.get(t.account_id)?.display_name ?? "—"}
-                </td>
-                <td className="px-3 py-3">
-                  {t.pending ? (
-                    <Badge tone="warn">pending</Badge>
-                  ) : (
-                    <Badge>posted</Badge>
-                  )}
-                </td>
-                <td
-                  className={`whitespace-nowrap px-5 py-3 text-right font-medium tabular-nums ${
-                    inflow ? "text-good" : "text-ink"
-                  }`}
+          {groups.map((group) => (
+            <Fragment key={group.date}>
+              <tr className="bg-page">
+                <th
+                  scope="colgroup"
+                  colSpan={COLUMN_COUNT}
+                  className="px-5 py-2 text-left text-xs font-semibold text-ink-2"
                 >
-                  {inflow ? "+" : "−"}
-                  {formatMoney(Math.abs(toNumber(t.amount)), t.currency)}
-                </td>
-                <td className="px-3 py-3 text-right text-ink-3">›</td>
+                  {formatDate(group.date)}
+                </th>
               </tr>
-            );
-          })}
+              {group.transactions.map((t) => {
+                const inflow = toNumber(t.amount) < 0;
+                return (
+                  <tr
+                    key={t.id}
+                    onClick={() => onSelect?.(t)}
+                    className={`hover:bg-line/50 ${onSelect ? "cursor-pointer" : ""}`}
+                  >
+                    <td className="max-w-[16rem] truncate px-5 py-3 text-ink">
+                      {t.merchant_name ?? "Unknown merchant"}
+                    </td>
+                    <td className="hidden px-3 py-3 text-ink-2 md:table-cell">
+                      {t.category_id
+                        ? (categoryById.get(t.category_id)?.name ?? "—")
+                        : "Uncategorized"}
+                    </td>
+                    <td className="px-3 py-3">
+                      <Badge tone={CLASSIFICATION_TONES[t.classification]}>
+                        {t.classification}
+                      </Badge>
+                    </td>
+                    <td className="hidden max-w-[12rem] truncate px-3 py-3 text-ink-2 lg:table-cell">
+                      {accountById.get(t.account_id)?.display_name ?? "—"}
+                    </td>
+                    <td className="px-3 py-3">
+                      {t.pending ? (
+                        <Badge tone="warn">pending</Badge>
+                      ) : (
+                        <Badge>posted</Badge>
+                      )}
+                    </td>
+                    <td
+                      className={`whitespace-nowrap px-5 py-3 text-right font-medium tabular-nums ${
+                        inflow ? "text-good" : "text-ink"
+                      }`}
+                    >
+                      {inflow ? "+" : "−"}
+                      {formatMoney(Math.abs(toNumber(t.amount)), t.currency)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-ink-3">›</td>
+                  </tr>
+                );
+              })}
+            </Fragment>
+          ))}
         </tbody>
       </table>
     </div>

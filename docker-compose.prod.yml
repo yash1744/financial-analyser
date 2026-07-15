@@ -1,0 +1,91 @@
+# Production stack: Caddy (TLS + security headers) → Next.js → FastAPI → Postgres.
+#
+#   DOMAIN=finance.example.com ACME_EMAIL=you@example.com \
+#     docker compose -f docker-compose.prod.yml up -d --build
+#
+# Only Caddy is exposed to the host. The browser talks to Next, Next
+# proxies /api/v1/* to the API on the internal network — one origin, so
+# the httpOnly auth cookie stays first-party. DOMAIN=localhost (default)
+# uses Caddy's internal self-signed CA for local verification.
+#
+# Requires in .env (enforced at boot once ENVIRONMENT != local):
+#   ENVIRONMENT=production  JWT_SECRET_KEY=…  TOKEN_ENCRYPTION_KEY=…  PLAID_*
+# Apply migrations before first use:
+#   docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - api
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://finance:${POSTGRES_PASSWORD:-finance}@db:5432/finance
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: finance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finance}
+      POSTGRES_DB: finance
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance -d finance"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Daily pg_dump into ./backups (see scripts/db_backup.sh); ship the
+  # directory off-box (object storage) as part of the host setup.
+  db-backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: finance
+      PGPASSWORD: ${POSTGRES_PASSWORD:-finance}
+      PGDATABASE: finance
+      BACKUP_KEEP_DAYS: 14
+      BACKUP_INTERVAL_SECONDS: 86400
+    volumes:
+      - ./backups:/backups
+      - ./scripts:/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - while true; do /scripts/db_backup.sh; sleep "$${BACKUP_INTERVAL_SECONDS}"; done
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

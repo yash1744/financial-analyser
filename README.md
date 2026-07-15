@@ -102,6 +102,28 @@ uv run alembic upgrade head                                  # apply schema
 uv run alembic revision --autogenerate -m "describe change"  # after model edits
 ```
 
+## Production deployment
+
+`docker-compose.prod.yml` runs the hardened stack: **Caddy** (TLS
+termination, HSTS/CSP/security headers — `deploy/Caddyfile`) in front of
+the standalone **Next.js** server (`frontend/Dockerfile`) and **FastAPI**.
+Only Caddy binds host ports; Caddy serves the frontend and routes
+`/api/v1/*` straight to the API on the internal network, so the browser
+sees one origin and the httpOnly auth cookie stays first-party (with
+`ENVIRONMENT=production` it is also `Secure`). The `db-backup` sidecar
+from the Backups section runs by default.
+
+```bash
+# .env must contain ENVIRONMENT=production, JWT_SECRET_KEY,
+# TOKEN_ENCRYPTION_KEY, PLAID_* (and optionally an LLM key)
+DOMAIN=finance.example.com ACME_EMAIL=you@example.com \
+  docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+```
+
+A real `DOMAIN` gets automatic Let's Encrypt certificates;
+`DOMAIN=localhost` (the default) uses Caddy's internal CA — handy for
+verifying the stack locally with `curl -k https://localhost/`.
 ## Backups
 
 A compose sidecar (`db-backup`, opt-in via the `backup` profile) writes a

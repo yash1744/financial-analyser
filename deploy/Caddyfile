@@ -1,0 +1,37 @@
+# TLS termination + security headers in front of the Next.js server.
+#
+# DOMAIN=localhost (the default) uses Caddy's internal CA — self-signed,
+# fine for verifying the stack locally. A real domain gets automatic
+# Let's Encrypt certificates; set ACME_EMAIL for expiry notices.
+
+{
+	email {$ACME_EMAIL:admin@localhost}
+}
+
+{$DOMAIN:localhost} {
+	encode gzip
+
+	header {
+		# a year of HSTS once you're serving real traffic over TLS
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Plaid Link loads its script and iframe from cdn.plaid.com;
+		# 'unsafe-inline' script/style is required by Next's runtime and
+		# Tailwind/Recharts inline styles
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.plaid.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://*.plaid.com; frame-src https://cdn.plaid.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	# API requests go straight to FastAPI — same origin for the browser
+	# (first-party cookie), and SSE streams skip the Next hop. In dev the
+	# equivalent is Next's /api/v1 rewrite; rewrite targets are baked at
+	# build time, so routing here keeps the frontend image env-free.
+	handle /api/v1/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

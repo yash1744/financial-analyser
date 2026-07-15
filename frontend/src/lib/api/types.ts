@@ -24,7 +24,12 @@ export interface AuthResponse {
 export interface Account {
   id: string;
   plaid_account_id: string;
+  /** The original Plaid name (refreshed on every sync). */
   name: string;
+  /** User override, or null when unset. */
+  nickname: string | null;
+  /** What to display: nickname when set, else name. */
+  display_name: string;
   account_type: string;
   account_subtype: string | null;
   current_balance: string | null;
@@ -75,6 +80,39 @@ export interface Transaction {
 
 export type TransactionSortBy = "transaction_date" | "amount" | "merchant_name";
 export type SortDir = "asc" | "desc";
+
+// --- receipts ---
+
+export interface ReceiptImage {
+  id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface Receipt {
+  id: string;
+  transaction_id: string;
+  merchant_name: string | null;
+  receipt_date: string | null;
+  notes: string | null;
+  tax_amount: string | null;
+  tip_amount: string | null;
+  comments: string | null;
+  images: ReceiptImage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReceiptDetailsUpdate {
+  merchant_name?: string | null;
+  receipt_date?: string | null;
+  notes?: string | null;
+  tax_amount?: string | null;
+  tip_amount?: string | null;
+  comments?: string | null;
+}
 
 export interface TransactionListParams {
   account_id?: string;

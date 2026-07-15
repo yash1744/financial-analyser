@@ -88,6 +88,17 @@ class Settings(BaseSettings):
             )
         return self
 
+    # Receipt image storage. "local" writes under LOCAL_STORAGE_DIR (dev);
+    # "r2" uses Cloudflare R2 via its S3-compatible API.
+    storage_backend: Literal["local", "r2"] = "local"
+    local_storage_dir: str = ".data/receipts"
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = ""
+    receipt_max_image_bytes: int = 10 * 1024 * 1024  # 10 MiB per upload
+    receipt_max_images: int = 10  # per transaction
+
     # LLM chat (app boots fine without a key; /ai endpoints then return 503)
     llm_provider: Literal["anthropic", "openai"] = "anthropic"
     anthropic_api_key: str = ""

@@ -26,7 +26,15 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/plaid/accounts/sync` | Fetch + upsert accounts for one item or all of a user's items |
 | POST | `/api/v1/transactions/sync` | Pull transaction changes from Plaid (cursor-based, idempotent) |
 | GET | `/api/v1/accounts` | A user's synced accounts (optionally one item's) |
+| PATCH | `/api/v1/accounts/{id}` | Set or clear an account nickname (null/blank clears) |
 | GET | `/api/v1/transactions` | Filterable, sortable, paginated transactions |
+| GET | `/api/v1/transactions/{id}` | A single transaction (scoped to the user) |
+| GET | `/api/v1/transactions/{id}/receipt` | The transaction's receipt (details + image metadata), or null |
+| PUT | `/api/v1/transactions/{id}/receipt` | Create/replace the receipt's details |
+| DELETE | `/api/v1/transactions/{id}/receipt` | Remove the receipt and its stored images |
+| POST | `/api/v1/transactions/{id}/receipt/images` | Upload one image (multipart `file`; JPEG/PNG/WebP, ≤10/txn) |
+| GET | `/api/v1/transactions/{id}/receipt/images/{image_id}` | The image bytes (auth-gated) |
+| DELETE | `/api/v1/transactions/{id}/receipt/images/{image_id}` | Delete one image |
 | GET | `/api/v1/categories` | All categories (flat list with parent ids) |
 | GET | `/api/v1/analytics/monthly-spending` | Spending / income / net per calendar month |
 | GET | `/api/v1/analytics/category-breakdown` | Spending by category with % shares |
@@ -74,9 +82,35 @@ from `/auth/me`. Delivery uses `EMAIL_BACKEND`: `console` (default) logs
 the email so the flows work with no SMTP server, `smtp` sends via
 `SMTP_*`/`EMAIL_FROM`; links point at `APP_BASE_URL`.
 
+## Receipts
+
+Each transaction can carry one **receipt**: user-entered details (merchant,
+date, notes, tax/tip, comments) plus up to **10 images** (JPEG/PNG/WebP).
+Details and the transaction summary live in Postgres (`receipts`,
+`receipt_images`); image bytes go to object storage. `STORAGE_BACKEND`
+selects the backend: `local` writes under `LOCAL_STORAGE_DIR` (dev, no
+cloud credentials), `r2` uses **Cloudflare R2** via its S3-compatible API
+(`R2_*`). Uploads are validated by declared type, size
+(`RECEIPT_MAX_IMAGE_BYTES`), and magic bytes; storage keys are always
+server-generated uuid paths (never derived from the filename). Image bytes
+are served back through the auth-gated API, never exposed from storage
+directly. Everything is scoped through the transaction→account→item→user
+chain, so a foreign transaction id is indistinguishable from a missing one
+(404).
+
+## Account nicknames
+
+Each account carries an optional user **nickname** (`accounts.nickname`)
+alongside Plaid's `name`. `PATCH /accounts/{id}` sets it; a null or
+blank value clears it. Account responses return all three of `name` (the
+untouched Plaid original), `nickname`, and `display_name` (the nickname
+when set, else the name) so clients can render the nickname while still
+showing the source name. Plaid syncs only write `name`, so nicknames
+survive re-syncs even when the bank renames the account.
+
 ## Stack
 
-Python 3.13 · FastAPI · PostgreSQL 17 · SQLAlchemy 2 (async) · Alembic · Pydantic v2 · uv · Docker
+Python 3.13 · FastAPI · PostgreSQL 17 · SQLAlchemy 2 (async) · Alembic · Pydantic v2 · boto3 (R2) · uv · Docker
 
 ## Frontend
 

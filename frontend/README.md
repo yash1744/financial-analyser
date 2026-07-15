@@ -9,8 +9,8 @@ Next.js frontend for the FastAPI backend in the repository root.
 | Route | Purpose |
 |---|---|
 | `/` | Dashboard — balance/spending KPI tiles, spending-vs-income chart, recent transactions |
-| `/transactions` | Filterable, sortable, paginated transaction table |
-| `/accounts` | Synced accounts with balances + manual sync |
+| `/transactions` | Filterable, sortable, paginated table; click a row for its detail + receipt panel |
+| `/accounts` | Synced accounts with balances, manual sync, and editable per-account nicknames |
 | `/connect` | Plaid Link flow: link token → Link UI → exchange → auto-sync |
 | `/analytics` | Monthly spending/income, month-over-month trend, category breakdown, top merchants |
 | `/assistant` | AI chat over your finances — streamed SSE answers, markdown, tool audit trail |

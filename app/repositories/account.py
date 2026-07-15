@@ -22,6 +22,18 @@ class AccountRepository(BaseRepository):
         result = await self.session.execute(query)
         return list(result.scalars())
 
+    async def get_for_user(
+        self, account_id: uuid.UUID, user_id: uuid.UUID
+    ) -> Account | None:
+        """The account only if it belongs to this user (via the item→user
+        join); None hides accounts owned by anyone else."""
+        result = await self.session.execute(
+            select(Account)
+            .join(PlaidItem, Account.plaid_item_id == PlaidItem.id)
+            .where(Account.id == account_id, PlaidItem.user_id == user_id)
+        )
+        return result.scalar_one_or_none()
+
     async def list_for_item(self, plaid_item_id: uuid.UUID) -> list[Account]:
         result = await self.session.execute(
             select(Account)

@@ -25,6 +25,7 @@ from app.services.exceptions import NotFoundError
 
 class AccountQueryService:
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.users = UserRepository(session)
         self.accounts = AccountRepository(session)
 
@@ -36,11 +37,31 @@ class AccountQueryService:
         accounts = await self.accounts.list_for_user(user_id, item_id)
         return [AccountResponse.model_validate(account) for account in accounts]
 
+    async def set_nickname(
+        self, user_id: uuid.UUID, account_id: uuid.UUID, nickname: str | None
+    ) -> AccountResponse:
+        """Set (or clear, when nickname is None) an account's nickname.
+        The Plaid `name` is never touched, so future syncs keep it intact."""
+        account = await self.accounts.get_for_user(account_id, user_id)
+        if account is None:
+            raise NotFoundError(f"account {account_id} does not exist")
+        account.nickname = nickname
+        await self.session.commit()
+        return AccountResponse.model_validate(account)
+
 
 class TransactionQueryService:
     def __init__(self, session: AsyncSession) -> None:
         self.users = UserRepository(session)
         self.transactions = TransactionRepository(session)
+
+    async def get_transaction(
+        self, user_id: uuid.UUID, transaction_id: uuid.UUID
+    ) -> TransactionResponse:
+        transaction = await self.transactions.get_for_user(transaction_id, user_id)
+        if transaction is None:
+            raise NotFoundError(f"transaction {transaction_id} does not exist")
+        return TransactionResponse.model_validate(transaction)
 
     async def list_transactions(
         self, user_id: uuid.UUID, query: TransactionListQuery

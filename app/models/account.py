@@ -26,7 +26,11 @@ class Account(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         index=True,
     )
     plaid_account_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    # The name Plaid provides; refreshed on every sync
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # User-chosen display name; NULL means "fall back to the Plaid name".
+    # Plaid syncs only touch `name`, so nicknames survive them.
+    nickname: Mapped[str | None] = mapped_column(String(100))
     account_type: Mapped[str] = mapped_column(String(50), nullable=False)  # depository, credit…
     account_subtype: Mapped[str | None] = mapped_column(String(50))  # checking, savings…
     current_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
@@ -34,6 +38,11 @@ class Account(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     currency: Mapped[str] = mapped_column(
         String(3), nullable=False, server_default=text("'USD'")
     )
+
+    @property
+    def display_name(self) -> str:
+        """What the UI should show: the nickname when set, else Plaid's name."""
+        return self.nickname or self.name
 
     plaid_item: Mapped["PlaidItem"] = relationship(back_populates="accounts")
     transactions: Mapped[list["Transaction"]] = relationship(

@@ -8,6 +8,7 @@ from app.models.message import Message
 from app.models.plaid_item import PlaidItem
 from app.models.plaid_sync_state import PlaidSyncState
 from app.models.raw_plaid_transaction import RawPlaidTransaction
+from app.models.receipt import Receipt, ReceiptImage
 from app.models.transaction import Transaction
 from app.models.user import User
 
@@ -20,6 +21,8 @@ __all__ = [
     "PlaidItem",
     "PlaidSyncState",
     "RawPlaidTransaction",
+    "Receipt",
+    "ReceiptImage",
     "Transaction",
     "User",
 ]

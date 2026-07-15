@@ -139,8 +139,9 @@ async def test_read_apis():
             accounts = resp.json()
             assert len(accounts) == 2
             assert set(accounts[0]) == {
-                "id", "plaid_account_id", "name", "account_type",
-                "account_subtype", "current_balance", "available_balance", "currency",
+                "id", "plaid_account_id", "name", "nickname", "display_name",
+                "account_type", "account_subtype", "current_balance",
+                "available_balance", "currency",
             }
             chk_id = next(a["id"] for a in accounts if a["plaid_account_id"] == "chk-1")
 

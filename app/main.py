@@ -6,6 +6,7 @@ from app.api.errors import register_exception_handlers
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.core.tracing import setup_tracing, shutdown_tracing
 
 
 @asynccontextmanager
@@ -13,6 +14,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     setup_logging(settings.log_level)
     yield
+    shutdown_tracing()
     # Dispose the connection pool on shutdown
     from app.db.session import engine
 
@@ -28,6 +30,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(api_router, prefix=settings.api_v1_prefix)
     register_exception_handlers(app)
+    setup_tracing(settings, app)
     return app
 
 

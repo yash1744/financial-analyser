@@ -110,7 +110,7 @@ survive re-syncs even when the bank renames the account.
 
 ## Stack
 
-Python 3.13 · FastAPI · PostgreSQL 17 · SQLAlchemy 2 (async) · Alembic · Pydantic v2 · boto3 (R2) · uv · Docker
+Python 3.13 · FastAPI · PostgreSQL 17 · SQLAlchemy 2 (async) · Alembic · Pydantic v2 · boto3 (R2) · OpenTelemetry · uv · Docker
 
 ## Frontend
 
@@ -195,6 +195,87 @@ docker compose --profile backup run --rm db-backup \
 `./backups/` is a host directory (gitignored) — for production, ship it
 off-box (object storage via rclone/cron, or use a managed Postgres with
 PITR instead).
+
+## Observability
+
+Distributed tracing via **OpenTelemetry**, exportable to any OTLP backend
+(Grafana Cloud, a local Jaeger/Tempo, Honeycomb, ...) — nothing here is
+Grafana-specific except the documented endpoint format below.
+`OTEL_TRACES_EXPORTER` selects the backend and is fully environment-driven
+(no code changes to switch it):
+
+| Value | Behavior |
+|---|---|
+| `none` (default) | SDK + every auto-instrumentation still run (so the code paths are always exercised), but nothing is exported. Zero setup — this is what CI and local dev use unless you opt in. |
+| `console` | Spans print to stdout. Quick sanity check without any backend running. |
+| `otlp` | Exports to `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `OTEL_EXPORTER_OTLP_HEADERS` for auth). |
+
+**What's traced**: every HTTP request (`FastAPIInstrumentor`), every
+SQLAlchemy query (`SQLAlchemyInstrumentor`, instrumented on the async
+engine's underlying sync engine), and every outbound call from the
+Anthropic/OpenAI SDKs (httpx), the Plaid SDK (urllib3), and boto3/R2
+(botocore) — all three run inside `asyncio.to_thread` workers, which
+propagate the request's trace context into the thread automatically, so
+they nest correctly with no extra wiring. On top of that, custom spans
+around the business operations issue #23 called out — auth (login/
+register/verify/reset), the Plaid Link exchange, transaction sync (with
+added/modified/removed/skipped counts), classification (one span per
+sync batch, not per transaction — hundreds of per-call spans would add
+real overhead for negligible signal), the AI assistant (one span per
+chat exchange, one per tool call), and receipt image uploads. Every
+mapped domain exception (`app/api/errors.py`) is recorded on the request
+span with `ERROR` status, so failures are visible in traces regardless
+of whether the failing code path also has a custom span.
+
+**PII**: no email addresses, message text, tool arguments/results, or
+file names appear in span attributes — only operational metadata
+(`user.id`, counts, durations, provider names, content types). Some
+domain exceptions embed user-supplied text in their message (e.g.
+`ConflictError` on a duplicate email, which the 409 response body
+legitimately includes) — those are redacted to just the exception type
+before being recorded on a span; see `redact_errors` in
+`app/core/tracing.py`. `app/core/tracing.py`'s `traced_span` is the one
+helper every custom span goes through, so this is enforced in one place,
+not per call site — `tests/test_tracing.py` asserts the redaction
+directly (a real PII leak, caught by that test during development, is
+documented there as a comment for context).
+
+**Local traces without any account** (`docker compose --profile observability up -d jaeger`, UI at
+<http://localhost:16686>):
+
+```bash
+docker compose --profile observability up -d jaeger
+OTEL_TRACES_EXPORTER=otlp OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+  uv run uvicorn app.main:app --reload
+```
+
+**Grafana Cloud**: free tier → Cloud Portal → your stack → **OpenTelemetry**
+gives you the OTLP endpoint plus a ready-made Basic-auth header (base64 of
+`instanceID:apiToken`). Then:
+
+```bash
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-<region>.grafana.net/otlp
+OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic <base64(instanceID:apiToken)>
+```
+
+Traces show up under your stack's **Traces** / Tempo explore view.
+
+**Adding a new span**: use `traced_span` from `app.core.tracing`, not
+`tracer.start_as_current_span` directly — it disables OTel's own default
+exception recording (which would double-record every error) and applies
+the PII-redaction option:
+
+```python
+from app.core.tracing import traced_span
+
+with traced_span("my.operation", {"some_id": str(id_)}) as span:
+    ...
+    span.set_attribute("outcome", "created")
+```
+
+Pass `redact_errors=True` if anything in the wrapped code can raise an
+exception whose message embeds user-supplied data.
 
 ## Layout
 

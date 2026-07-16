@@ -24,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.tracing import traced_span
 from app.models.enums import TokenPurpose
 from app.models.user import User
 from app.repositories.auth_token import AuthTokenRepository
@@ -90,40 +91,50 @@ class AuthService:
     # --- flows ---
 
     async def register(self, email: str, password: str) -> tuple[User, str]:
-        normalized = email.strip().lower()
-        # An existing email always conflicts — including rows created
-        # before auth existed (password_hash NULL): emails are unverified,
-        # so letting those be "claimed" would be an account takeover.
-        if await self.users.get_by_email(normalized) is not None:
-            raise ConflictError(f"a user with email {normalized!r} already exists")
+        # redact_errors: ConflictError's message embeds the raw email —
+        # fine in the 409 response body, not fine in a trace
+        with traced_span("auth.register", redact_errors=True) as span:
+            normalized = email.strip().lower()
+            # An existing email always conflicts — including rows created
+            # before auth existed (password_hash NULL): emails are unverified,
+            # so letting those be "claimed" would be an account takeover.
+            if await self.users.get_by_email(normalized) is not None:
+                raise ConflictError(f"a user with email {normalized!r} already exists")
 
-        user = await self.users.create(normalized, password_hash=hash_password(password))
-        try:
-            await self.session.commit()
-        except IntegrityError as exc:
-            # Lost a race with a concurrent insert; same outcome as the pre-check
-            await self.session.rollback()
-            raise ConflictError(f"a user with email {normalized!r} already exists") from exc
-        await self.session.refresh(user)
-        # Best-effort: a broken mail setup must not block registration —
-        # the user can always resend from the verify-email page.
-        try:
-            await self.request_email_verification(user)
-        except Exception:
-            logger.exception("verification email to %s failed", user.email)
-        return user, self.create_token(user.id)
+            user = await self.users.create(normalized, password_hash=hash_password(password))
+            try:
+                await self.session.commit()
+            except IntegrityError as exc:
+                # Lost a race with a concurrent insert; same outcome as the pre-check
+                await self.session.rollback()
+                raise ConflictError(f"a user with email {normalized!r} already exists") from exc
+            await self.session.refresh(user)
+            span.set_attribute("user.id", str(user.id))
+            # Best-effort: a broken mail setup must not block registration —
+            # the user can always resend from the verify-email page.
+            try:
+                await self.request_email_verification(user)
+            except Exception:
+                logger.exception("verification email to %s failed", user.email)
+            return user, self.create_token(user.id)
 
     async def login(self, email: str, password: str) -> tuple[User, str]:
-        user = await self.users.get_by_email(email.strip().lower())
-        # Same error for unknown email / no password / wrong password —
-        # don't leak which emails exist
-        if (
-            user is None
-            or user.password_hash is None
-            or not verify_password(password, user.password_hash)
-        ):
-            raise AuthenticationError("incorrect email or password")
-        return user, self.create_token(user.id)
+        # redact_errors: nothing here embeds the email today, but a login
+        # span is exactly where a future exception message might, and the
+        # cost of getting it wrong (PII in a trace) is worse than the cost
+        # of a slightly less detailed error type in Grafana/Jaeger
+        with traced_span("auth.login", redact_errors=True) as span:
+            user = await self.users.get_by_email(email.strip().lower())
+            # Same error for unknown email / no password / wrong password —
+            # don't leak which emails exist
+            if (
+                user is None
+                or user.password_hash is None
+                or not verify_password(password, user.password_hash)
+            ):
+                raise AuthenticationError("incorrect email or password")
+            span.set_attribute("user.id", str(user.id))
+            return user, self.create_token(user.id)
 
     # --- email verification ---
 
@@ -154,20 +165,22 @@ class AuthService:
         return True
 
     async def verify_email(self, raw_token: str) -> User:
-        token = await self.tokens.get_valid(
-            _hash_token(raw_token), TokenPurpose.EMAIL_VERIFICATION
-        )
-        if token is None:
-            raise AuthenticationError("invalid or expired verification link")
-        user = await self.users.get(token.user_id)
-        if user is None:  # account deleted after the email went out
-            raise AuthenticationError("invalid or expired verification link")
-        now = datetime.now(UTC)
-        token.used_at = now
-        if user.email_verified_at is None:
-            user.email_verified_at = now
-        await self.session.commit()
-        return user
+        with traced_span("auth.verify_email", redact_errors=True) as span:
+            token = await self.tokens.get_valid(
+                _hash_token(raw_token), TokenPurpose.EMAIL_VERIFICATION
+            )
+            if token is None:
+                raise AuthenticationError("invalid or expired verification link")
+            user = await self.users.get(token.user_id)
+            if user is None:  # account deleted after the email went out
+                raise AuthenticationError("invalid or expired verification link")
+            now = datetime.now(UTC)
+            token.used_at = now
+            if user.email_verified_at is None:
+                user.email_verified_at = now
+            await self.session.commit()
+            span.set_attribute("user.id", str(user.id))
+            return user
 
     # --- password reset ---
 
@@ -175,54 +188,60 @@ class AuthService:
         """Email a reset link if the address belongs to an account.
         Always returns silently — the caller's response must not reveal
         whether the email exists (no account-enumeration oracle)."""
-        user = await self.users.get_by_email(email.strip().lower())
-        if user is None or user.password_hash is None:
-            return
-        raw = await self._issue_token(
-            user.id,
-            TokenPurpose.PASSWORD_RESET,
-            timedelta(minutes=self.settings.password_reset_ttl_minutes),
-        )
-        await self.session.commit()
-        link = f"{self.settings.app_base_url}/reset-password?token={raw}"
-        try:
-            await self.email.send(
-                EmailMessage(
-                    to=user.email,
-                    subject="Reset your password",
-                    body=(
-                        "A password reset was requested for this account. Open "
-                        "the link below to choose a new password (valid for "
-                        f"{self.settings.password_reset_ttl_minutes} minutes):\n\n"
-                        f"{link}\n\nIf you didn't request this, you can ignore "
-                        "this message — your password is unchanged."
-                    ),
-                )
+        # Deliberately no user.id attribute even on the "account exists"
+        # path — the whole point of this endpoint is that its behavior
+        # (and by extension its trace) must not distinguish the two cases.
+        with traced_span("auth.request_password_reset", redact_errors=True):
+            user = await self.users.get_by_email(email.strip().lower())
+            if user is None or user.password_hash is None:
+                return
+            raw = await self._issue_token(
+                user.id,
+                TokenPurpose.PASSWORD_RESET,
+                timedelta(minutes=self.settings.password_reset_ttl_minutes),
             )
-        except Exception:
-            # swallowing keeps the response uniform; a send failure that
-            # only happens for existing accounts would leak existence
-            logger.exception("password reset email to %s failed", user.email)
+            await self.session.commit()
+            link = f"{self.settings.app_base_url}/reset-password?token={raw}"
+            try:
+                await self.email.send(
+                    EmailMessage(
+                        to=user.email,
+                        subject="Reset your password",
+                        body=(
+                            "A password reset was requested for this account. Open "
+                            "the link below to choose a new password (valid for "
+                            f"{self.settings.password_reset_ttl_minutes} minutes):\n\n"
+                            f"{link}\n\nIf you didn't request this, you can ignore "
+                            "this message — your password is unchanged."
+                        ),
+                    )
+                )
+            except Exception:
+                # swallowing keeps the response uniform; a send failure that
+                # only happens for existing accounts would leak existence
+                logger.exception("password reset email to %s failed", user.email)
 
     async def reset_password(self, raw_token: str, new_password: str) -> User:
-        token = await self.tokens.get_valid(
-            _hash_token(raw_token), TokenPurpose.PASSWORD_RESET
-        )
-        if token is None:
-            raise AuthenticationError("invalid or expired reset link")
-        user = await self.users.get(token.user_id)
-        if user is None:
-            raise AuthenticationError("invalid or expired reset link")
-        now = datetime.now(UTC)
-        user.password_hash = hash_password(new_password)
-        token.used_at = now
-        # a successful reset kills every other outstanding reset link
-        await self.tokens.invalidate_active(user.id, TokenPurpose.PASSWORD_RESET)
-        # completing the emailed flow proves mailbox ownership
-        if user.email_verified_at is None:
-            user.email_verified_at = now
-        await self.session.commit()
-        return user
+        with traced_span("auth.reset_password", redact_errors=True) as span:
+            token = await self.tokens.get_valid(
+                _hash_token(raw_token), TokenPurpose.PASSWORD_RESET
+            )
+            if token is None:
+                raise AuthenticationError("invalid or expired reset link")
+            user = await self.users.get(token.user_id)
+            if user is None:
+                raise AuthenticationError("invalid or expired reset link")
+            now = datetime.now(UTC)
+            user.password_hash = hash_password(new_password)
+            token.used_at = now
+            # a successful reset kills every other outstanding reset link
+            await self.tokens.invalidate_active(user.id, TokenPurpose.PASSWORD_RESET)
+            # completing the emailed flow proves mailbox ownership
+            if user.email_verified_at is None:
+                user.email_verified_at = now
+            await self.session.commit()
+            span.set_attribute("user.id", str(user.id))
+            return user
 
     # --- internals ---
 

@@ -9,6 +9,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tracing import traced_span
 from app.models.enums import PlaidItemStatus
 from app.models.plaid_item import PlaidItem
 from app.models.user import User
@@ -56,41 +57,48 @@ class PlaidLinkService:
         so without this check every re-link would duplicate the bank and
         its transactions.
         """
-        user = await self._require_user(user_id)
+        with traced_span(
+            "plaid.link.exchange_public_token", {"user.id": str(user_id)}
+        ) as span:
+            user = await self._require_user(user_id)
 
-        exchanged = await self.plaid.exchange_public_token(public_token)
-        # Also validates the fresh access token and yields institution info
-        snapshot = await self.plaid.get_accounts(exchanged.access_token)
-        institution_id = snapshot.item.get("institution_id")
-        institution_name = snapshot.item.get("institution_name")
+            exchanged = await self.plaid.exchange_public_token(public_token)
+            # Also validates the fresh access token and yields institution info
+            snapshot = await self.plaid.get_accounts(exchanged.access_token)
+            institution_id = snapshot.item.get("institution_id")
+            institution_name = snapshot.item.get("institution_name")
+            if institution_id:
+                span.set_attribute("institution_id", institution_id)
 
-        encrypted = self.cipher.encrypt(exchanged.access_token)
+            encrypted = self.cipher.encrypt(exchanged.access_token)
 
-        item = await self.items.get_by_plaid_item_id(exchanged.item_id)
-        if item is not None:
-            if item.user_id != user.id:
-                raise ConflictError("this institution connection belongs to another user")
-            item.access_token_encrypted = encrypted
-            item.institution_id = institution_id or item.institution_id
-            item.institution_name = institution_name or item.institution_name
-            item.status = PlaidItemStatus.ACTIVE
-            logger.info("Re-linked plaid item %s for user %s", exchanged.item_id, user.id)
-        else:
-            await self._reject_duplicate_institution(
-                user, exchanged.access_token, institution_id, institution_name
-            )
-            item = await self.items.create(
-                user_id=user.id,
-                plaid_item_id=exchanged.item_id,
-                access_token_encrypted=encrypted,
-                institution_id=institution_id,
-                institution_name=institution_name,
-            )
-            logger.info("Linked new plaid item %s for user %s", exchanged.item_id, user.id)
+            item = await self.items.get_by_plaid_item_id(exchanged.item_id)
+            if item is not None:
+                if item.user_id != user.id:
+                    raise ConflictError("this institution connection belongs to another user")
+                item.access_token_encrypted = encrypted
+                item.institution_id = institution_id or item.institution_id
+                item.institution_name = institution_name or item.institution_name
+                item.status = PlaidItemStatus.ACTIVE
+                span.set_attribute("outcome", "relinked")
+                logger.info("Re-linked plaid item %s for user %s", exchanged.item_id, user.id)
+            else:
+                await self._reject_duplicate_institution(
+                    user, exchanged.access_token, institution_id, institution_name
+                )
+                item = await self.items.create(
+                    user_id=user.id,
+                    plaid_item_id=exchanged.item_id,
+                    access_token_encrypted=encrypted,
+                    institution_id=institution_id,
+                    institution_name=institution_name,
+                )
+                span.set_attribute("outcome", "created")
+                logger.info("Linked new plaid item %s for user %s", exchanged.item_id, user.id)
 
-        await self.session.commit()
-        await self.session.refresh(item)
-        return item
+            await self.session.commit()
+            await self.session.refresh(item)
+            return item
 
     async def _reject_duplicate_institution(
         self,

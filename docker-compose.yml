@@ -71,6 +71,21 @@ services:
     depends_on:
       - db
 
+  # Local trace inspection — no Grafana Cloud account needed. Not started
+  # by default:
+  #   docker compose --profile observability up -d jaeger
+  # Then run the API with OTEL_TRACES_EXPORTER=otlp and
+  # OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 (see .env.example),
+  # and browse traces at http://localhost:16686.
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    profiles: ["observability"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # UI
+      - "4318:4318" # OTLP HTTP receiver
+
 volumes:
   pgdata:
   pgadmin_data:

@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
+from app.core.tracing import traced_span
 from app.models.receipt import ReceiptImage
 from app.models.transaction import Transaction
 from app.repositories.receipt import ReceiptRepository
@@ -134,42 +135,54 @@ class ReceiptService:
         content_type: str,
         data: bytes,
     ) -> ReceiptResponse:
-        transaction = await self._owned_transaction(user_id, transaction_id)
-        _validate_image(content_type, data, self.settings.receipt_max_image_bytes)
+        # No file_name as a span attribute (user-supplied, occasionally
+        # carries something sensitive) — content_type/size are enough to
+        # diagnose upload issues.
+        with traced_span(
+            "receipts.add_image",
+            {
+                "content_type": content_type,
+                "size_bytes": len(data),
+                "storage_backend": type(self.storage).__name__,
+            },
+        ):
+            transaction = await self._owned_transaction(user_id, transaction_id)
+            _validate_image(content_type, data, self.settings.receipt_max_image_bytes)
 
-        receipt = await self.receipts.get_for_transaction(transaction.id)
-        if receipt is None:
-            receipt = await self.receipts.create(transaction.id)
-        if len(receipt.images) >= self.settings.receipt_max_images:
-            raise ConflictError(
-                f"a transaction can have at most "
-                f"{self.settings.receipt_max_images} receipt images"
-            )
+            receipt = await self.receipts.get_for_transaction(transaction.id)
+            if receipt is None:
+                receipt = await self.receipts.create(transaction.id)
+            if len(receipt.images) >= self.settings.receipt_max_images:
+                raise ConflictError(
+                    f"a transaction can have at most "
+                    f"{self.settings.receipt_max_images} receipt images"
+                )
 
-        extension, _ = _IMAGE_TYPES[content_type]
-        key = f"receipts/{user_id}/{transaction.id}/{uuid.uuid4().hex}.{extension}"
-        await self.storage.put(key, data, content_type)
-        try:
-            self.receipts.add_image(
-                receipt,
-                storage_key=key,
-                content_type=content_type,
-                file_name=file_name[:255] or f"receipt.{extension}",
-                size_bytes=len(data),
-            )
-            await self.session.commit()
-        except Exception:
-            await self.session.rollback()
+            extension, _ = _IMAGE_TYPES[content_type]
+            key = f"receipts/{user_id}/{transaction.id}/{uuid.uuid4().hex}.{extension}"
+            await self.storage.put(key, data, content_type)
             try:
-                await self.storage.delete(key)  # don't strand the object
+                self.receipts.add_image(
+                    receipt,
+                    storage_key=key,
+                    content_type=content_type,
+                    file_name=file_name[:255] or f"receipt.{extension}",
+                    size_bytes=len(data),
+                )
+                await self.session.commit()
             except Exception:
-                logger.exception("failed to clean up receipt object %s", key)
-            raise
-        # add_image assigned via the relationship, so receipt.images already
-        # holds the new image; the re-query just reloads expired scalars
-        refreshed = await self.receipts.get_for_transaction(transaction.id)
-        assert refreshed is not None
-        return ReceiptResponse.model_validate(refreshed)
+                await self.session.rollback()
+                try:
+                    await self.storage.delete(key)  # don't strand the object
+                except Exception:
+                    logger.exception("failed to clean up receipt object %s", key)
+                raise
+            # add_image assigned via the relationship, so receipt.images
+            # already holds the new image; the re-query just reloads
+            # expired scalars
+            refreshed = await self.receipts.get_for_transaction(transaction.id)
+            assert refreshed is not None
+            return ReceiptResponse.model_validate(refreshed)
 
     async def delete_image(
         self, user_id: uuid.UUID, transaction_id: uuid.UUID, image_id: uuid.UUID

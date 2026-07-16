@@ -24,6 +24,7 @@ from app.ai.schemas import (
     ToolResultBlock,
 )
 from app.ai.tool_registry import ToolRegistry
+from app.core.tracing import traced_span
 
 logger = logging.getLogger(__name__)
 
@@ -150,4 +151,9 @@ class FinanceAgent:
 
     async def _execute(self, call: ToolCall):
         logger.info("tool call: %s", call.name)
-        return await self._tools.execute(call.name, call.arguments)
+        # No tool arguments/results as span attributes — those are
+        # user-scoped financial data, not operational metadata.
+        with traced_span("ai.tool_call", {"tool.name": call.name}) as span:
+            result = await self._tools.execute(call.name, call.arguments)
+            span.set_attribute("tool.is_error", result.is_error)
+            return result

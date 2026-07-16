@@ -99,6 +99,19 @@ class Settings(BaseSettings):
     receipt_max_image_bytes: int = 10 * 1024 * 1024  # 10 MiB per upload
     receipt_max_images: int = 10  # per transaction
 
+    # Distributed tracing (OpenTelemetry). "none" (default) initializes the
+    # SDK and auto-instrumentation but exports nowhere — safe for CI/local
+    # dev with zero setup. "console" prints spans to stdout for quick local
+    # debugging. "otlp" exports to OTEL_EXPORTER_OTLP_ENDPOINT — any OTLP
+    # backend (Grafana Cloud, a local Jaeger/Tempo, Honeycomb, ...).
+    otel_traces_exporter: Literal["none", "console", "otlp"] = "none"
+    otel_service_name: str = "finance-app-api"
+    otel_exporter_otlp_endpoint: str = "http://localhost:4318"
+    # Raw "k1=v1,k2=v2" header string, e.g. Grafana Cloud's
+    # "Authorization=Basic <base64(instanceID:apiToken)>"
+    otel_exporter_otlp_headers: str = ""
+    otel_traces_sample_ratio: float = 1.0
+
     # LLM chat (app boots fine without a key; /ai endpoints then return 503)
     llm_provider: Literal["anthropic", "openai"] = "anthropic"
     anthropic_api_key: str = ""

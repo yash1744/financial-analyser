@@ -26,6 +26,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.tracing import traced_span
 from app.models.enums import (
     PlaidItemStatus,
     ProcessingStatus,
@@ -103,126 +104,148 @@ class TransactionSyncService:
         return [await self._sync_item(item) for item in items]
 
     async def _sync_item(self, item: PlaidItem) -> ItemTransactionsSyncSummary:
-        state = await self.sync_states.get_for_item(item.id)
-        if state is None:
-            state = await self.sync_states.create_for_item(item.id)
+        with traced_span(
+            "plaid.transactions.sync_item",
+            {"item.id": str(item.id), "plaid_item_id": item.plaid_item_id},
+        ) as span:
+            state = await self.sync_states.get_for_item(item.id)
+            if state is None:
+                state = await self.sync_states.create_for_item(item.id)
 
-        access_token = self.cipher.decrypt(item.access_token_encrypted)
-        state.sync_status = SyncStatus.SYNCING
-        try:
-            result = await self.plaid.sync_transactions(access_token, state.cursor)
-        except PlaidItemLoginRequiredError:
-            item.status = PlaidItemStatus.LOGIN_REQUIRED
-            state.sync_status = SyncStatus.ERROR
-            await self.session.commit()
-            raise
-        except PlaidServiceError:
-            state.sync_status = SyncStatus.ERROR
-            await self.session.commit()
-            raise
+            access_token = self.cipher.decrypt(item.access_token_encrypted)
+            state.sync_status = SyncStatus.SYNCING
+            try:
+                result = await self.plaid.sync_transactions(access_token, state.cursor)
+            except PlaidItemLoginRequiredError:
+                item.status = PlaidItemStatus.LOGIN_REQUIRED
+                state.sync_status = SyncStatus.ERROR
+                await self.session.commit()
+                raise
+            except PlaidServiceError:
+                state.sync_status = SyncStatus.ERROR
+                await self.session.commit()
+                raise
 
-        changed = result.added + result.modified
-        if changed:
-            # First transaction sync before any account sync: pull the
-            # accounts now so normalization has rows to attach to
-            if not await self.accounts.list_for_item(item.id):
-                await self.account_sync.sync_item(item)
+            changed = result.added + result.modified
+            if changed:
+                # First transaction sync before any account sync: pull the
+                # accounts now so normalization has rows to attach to
+                if not await self.accounts.list_for_item(item.id):
+                    await self.account_sync.sync_item(item)
 
-        added, modified, skipped = await self._apply_changes(item, changed)
-        removed = await self.transactions.delete_by_plaid_ids(
-            [entry["transaction_id"] for entry in result.removed]
-        )
-        # Self-heal rows synced before categorization/classification
-        # existed (or whose payload lacked a category at the time) from
-        # the raw audit trail
-        enriched = await self._backfill_enrichment(item)
-        if enriched:
-            logger.info(
-                "Backfilled category/classification for %d transactions on item %s",
-                enriched,
-                item.plaid_item_id,
+            added, modified, skipped = await self._apply_changes(item, changed)
+            removed = await self.transactions.delete_by_plaid_ids(
+                [entry["transaction_id"] for entry in result.removed]
             )
+            # Self-heal rows synced before categorization/classification
+            # existed (or whose payload lacked a category at the time) from
+            # the raw audit trail
+            enriched = await self._backfill_enrichment(item)
+            if enriched:
+                logger.info(
+                    "Backfilled category/classification for %d transactions on item %s",
+                    enriched,
+                    item.plaid_item_id,
+                )
 
-        now = datetime.now(UTC)
-        state.cursor = result.next_cursor
-        state.last_synced_at = now
-        state.sync_status = SyncStatus.IDLE
-        await self.session.commit()
+            now = datetime.now(UTC)
+            state.cursor = result.next_cursor
+            state.last_synced_at = now
+            state.sync_status = SyncStatus.IDLE
+            await self.session.commit()
 
-        logger.info(
-            "Synced transactions for item %s: +%d ~%d -%d (skipped %d)",
-            item.plaid_item_id,
-            added,
-            modified,
-            removed,
-            skipped,
-        )
-        return ItemTransactionsSyncSummary(
-            item_id=item.id,
-            plaid_item_id=item.plaid_item_id,
-            institution_name=item.institution_name,
-            added=added,
-            modified=modified,
-            removed=removed,
-            skipped=skipped,
-            next_cursor=result.next_cursor,
-            last_synced_at=now,
-        )
+            span.set_attributes(
+                {
+                    "transaction_count.added": added,
+                    "transaction_count.modified": modified,
+                    "transaction_count.removed": removed,
+                    "transaction_count.skipped": skipped,
+                    "transaction_count.enriched": enriched,
+                }
+            )
+            logger.info(
+                "Synced transactions for item %s: +%d ~%d -%d (skipped %d)",
+                item.plaid_item_id,
+                added,
+                modified,
+                removed,
+                skipped,
+            )
+            return ItemTransactionsSyncSummary(
+                item_id=item.id,
+                plaid_item_id=item.plaid_item_id,
+                institution_name=item.institution_name,
+                added=added,
+                modified=modified,
+                removed=removed,
+                skipped=skipped,
+                next_cursor=result.next_cursor,
+                last_synced_at=now,
+            )
 
     async def _apply_changes(
         self, item: PlaidItem, changed: list[dict[str, Any]]
     ) -> tuple[int, int, int]:
         """Land raw payloads and upsert normalized rows. Returns (added, modified, skipped)."""
-        accounts_by_plaid_id = {
-            account.plaid_account_id: account
-            for account in await self.accounts.list_for_item(item.id)
-        }
-        ids = [entry["transaction_id"] for entry in changed]
-        raw_by_id = await self.raws.map_by_plaid_ids(ids)
-        tx_by_id = await self.transactions.map_by_plaid_ids(ids)
+        # One span for the whole batch, not one per transaction: `resolve()`
+        # runs once per entry (hundreds per sync) and is usually an
+        # in-memory cache hit after the first few — per-call spans would
+        # add real overhead for negligible signal. This still gives phase-
+        # level visibility (entry_count + duration) under the parent
+        # plaid.transactions.sync_item span.
+        with traced_span(
+            "plaid.transactions.classify_and_normalize", {"entry_count": len(changed)}
+        ):
+            accounts_by_plaid_id = {
+                account.plaid_account_id: account
+                for account in await self.accounts.list_for_item(item.id)
+            }
+            ids = [entry["transaction_id"] for entry in changed]
+            raw_by_id = await self.raws.map_by_plaid_ids(ids)
+            tx_by_id = await self.transactions.map_by_plaid_ids(ids)
 
-        added = modified = skipped = 0
-        now = datetime.now(UTC)
-        for entry in changed:
-            plaid_txn_id = entry["transaction_id"]
-            payload = _jsonable(entry)
+            added = modified = skipped = 0
+            now = datetime.now(UTC)
+            for entry in changed:
+                plaid_txn_id = entry["transaction_id"]
+                payload = _jsonable(entry)
 
-            raw = raw_by_id.get(plaid_txn_id)
-            if raw is None:
-                raw = await self.raws.create(
-                    plaid_transaction_id=plaid_txn_id,
-                    plaid_item_id=item.id,
-                    raw_payload=payload,
-                )
-                raw_by_id[plaid_txn_id] = raw
-            else:
-                raw.raw_payload = payload
+                raw = raw_by_id.get(plaid_txn_id)
+                if raw is None:
+                    raw = await self.raws.create(
+                        plaid_transaction_id=plaid_txn_id,
+                        plaid_item_id=item.id,
+                        raw_payload=payload,
+                    )
+                    raw_by_id[plaid_txn_id] = raw
+                else:
+                    raw.raw_payload = payload
 
-            account = accounts_by_plaid_id.get(entry.get("account_id"))
-            if account is None:
-                # e.g. a loan account we deliberately don't sync; raw is
-                # kept so it can be reprocessed if the filter widens
-                raw.processing_status = ProcessingStatus.SKIPPED
+                account = accounts_by_plaid_id.get(entry.get("account_id"))
+                if account is None:
+                    # e.g. a loan account we deliberately don't sync; raw is
+                    # kept so it can be reprocessed if the filter widens
+                    raw.processing_status = ProcessingStatus.SKIPPED
+                    raw.processed_at = now
+                    skipped += 1
+                    continue
+
+                fields = self._normalized_fields(entry, account.id)
+                fields["category_id"] = await self.categorizer.resolve(entry)
+                transaction = tx_by_id.get(plaid_txn_id)
+                if transaction is None:
+                    transaction = Transaction(plaid_transaction_id=plaid_txn_id, **fields)
+                    self.transactions.add(transaction)
+                    tx_by_id[plaid_txn_id] = transaction
+                    added += 1
+                else:
+                    if self._apply_updates(transaction, fields):
+                        modified += 1
+
+                raw.processing_status = ProcessingStatus.PROCESSED
                 raw.processed_at = now
-                skipped += 1
-                continue
 
-            fields = self._normalized_fields(entry, account.id)
-            fields["category_id"] = await self.categorizer.resolve(entry)
-            transaction = tx_by_id.get(plaid_txn_id)
-            if transaction is None:
-                transaction = Transaction(plaid_transaction_id=plaid_txn_id, **fields)
-                self.transactions.add(transaction)
-                tx_by_id[plaid_txn_id] = transaction
-                added += 1
-            else:
-                if self._apply_updates(transaction, fields):
-                    modified += 1
-
-            raw.processing_status = ProcessingStatus.PROCESSED
-            raw.processed_at = now
-
-        return added, modified, skipped
+            return added, modified, skipped
 
     async def _backfill_enrichment(self, item: PlaidItem) -> int:
         """Re-derive category and classification for the item's

@@ -24,6 +24,7 @@ from app.ai.schemas import (
     ToolCallSummary,
 )
 from app.ai.tool_registry import ToolRegistry
+from app.core.tracing import traced_span
 from app.llm.tools import build_finance_toolset
 from app.models.conversation import Conversation
 from app.models.enums import MessageRole
@@ -50,33 +51,51 @@ class ChatService:
         return FinanceAgent(llm=self.llm, tools=ToolRegistry(toolset))
 
     async def chat(self, user_id: uuid.UUID, request: ChatRequest) -> ChatResponse:
-        conversation, history = await self._prepare(user_id, request)
-        agent = self._build_agent(user_id)
-        result = await agent.run(history, request.message)
-        await self._persist(conversation, result)
-        return ChatResponse(
-            conversation_id=conversation.id,
-            message=result.text,
-            tool_calls=_summaries(result),
-        )
+        # No message text as a span attribute — that's the actual
+        # financial/PII content of the conversation.
+        with traced_span(
+            "ai.chat",
+            {"user.id": str(user_id), "provider": type(self.llm).__name__},
+        ) as span:
+            conversation, history = await self._prepare(user_id, request)
+            agent = self._build_agent(user_id)
+            result = await agent.run(history, request.message)
+            await self._persist(conversation, result)
+            span.set_attributes(
+                {
+                    "conversation.id": str(conversation.id),
+                    "tool_call_count": len(result.tool_events),
+                }
+            )
+            return ChatResponse(
+                conversation_id=conversation.id,
+                message=result.text,
+                tool_calls=_summaries(result),
+            )
 
     async def chat_stream(
         self, user_id: uuid.UUID, request: ChatRequest
     ) -> AsyncIterator[AgentEvent]:
         """Yields token/tool events live, then a final done event (after
         the run has been persisted)."""
-        conversation, history = await self._prepare(user_id, request)
-        agent = self._build_agent(user_id)
-        async for item in agent.run_stream(history, request.message):
-            if isinstance(item, AgentRunResult):
-                await self._persist(conversation, item)
-                yield DoneEvent(
-                    conversation_id=conversation.id,
-                    message=item.text,
-                    tool_calls=item.tool_events,
-                )
-            else:
-                yield item
+        with traced_span(
+            "ai.chat_stream",
+            {"user.id": str(user_id), "provider": type(self.llm).__name__},
+        ) as span:
+            conversation, history = await self._prepare(user_id, request)
+            span.set_attribute("conversation.id", str(conversation.id))
+            agent = self._build_agent(user_id)
+            async for item in agent.run_stream(history, request.message):
+                if isinstance(item, AgentRunResult):
+                    await self._persist(conversation, item)
+                    span.set_attribute("tool_call_count", len(item.tool_events))
+                    yield DoneEvent(
+                        conversation_id=conversation.id,
+                        message=item.text,
+                        tool_calls=item.tool_events,
+                    )
+                else:
+                    yield item
 
     # --- internals ---
 

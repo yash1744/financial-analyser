@@ -1,10 +1,22 @@
 "use client";
 
 /** Overlay showing one transaction's summary plus its receipt panel.
- * Closes on backdrop click or Escape. */
+ * Built on Radix's Dialog primitive (components/ui/Dialog.tsx): focus trap,
+ * focus restoration to the triggering row on close, Escape, outside-click,
+ * scroll lock, and ARIA wiring all come from Radix — this component only
+ * supplies the content. The parent (transactions/page.tsx) mounts this
+ * only while a transaction is selected, so `open` is always true here;
+ * onOpenChange fires (with `false`) for every way Radix can close the
+ * dialog — Escape, outside click, or the close button below — and all of
+ * them route through the same `onClose` prop. */
 
-import { useEffect } from "react";
-
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/Dialog";
 import type { Account, Category, Transaction } from "@/lib/api/types";
 import { formatDate, formatMoney, toNumber } from "@/lib/format";
 
@@ -21,34 +33,22 @@ export function TransactionDetailModal({
   category?: Category;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const inflow = toNumber(transaction.amount) < 0;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="my-auto w-full max-w-2xl rounded-xl border border-line bg-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Transaction details"
-      >
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogDescription>
+          Transaction details for{" "}
+          {transaction.merchant_name ?? "this transaction"}, including receipt
+          attachments.
+        </DialogDescription>
+
         <div className="flex items-start justify-between border-b border-line px-5 py-4">
           <div>
-            <h3 className="text-base font-semibold text-ink">
+            <DialogTitle>
               {transaction.merchant_name ?? "Unknown merchant"}
-            </h3>
+            </DialogTitle>
             <p className="mt-0.5 text-xs text-ink-3">
               {formatDate(transaction.transaction_date)}
               {account ? ` · ${account.name}` : ""}
@@ -65,14 +65,15 @@ export function TransactionDetailModal({
                 transaction.currency,
               )}
             </span>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="rounded-md px-2 py-1 text-ink-3 hover:bg-line hover:text-ink"
-            >
-              ✕
-            </button>
+            <DialogClose asChild>
+              <button
+                type="button"
+                aria-label="Close"
+                className="rounded-md px-2 py-1 text-ink-3 hover:bg-line hover:text-ink"
+              >
+                ✕
+              </button>
+            </DialogClose>
           </div>
         </div>
 
@@ -82,7 +83,7 @@ export function TransactionDetailModal({
           </h4>
           <ReceiptPanel transactionId={transaction.id} />
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

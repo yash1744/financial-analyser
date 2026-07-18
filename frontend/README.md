@@ -70,3 +70,23 @@ Design tokens (light + dark via `prefers-color-scheme`) live in
 `src/app/globals.css` and are exposed as Tailwind colors (`bg-surface`,
 `text-ink`, `bg-series-1`, …). Charts read the same CSS variables, so they
 follow the theme automatically.
+
+**Theme toggle**: a System/Light/Dark control in the sidebar (`lib/theme.ts`,
+`components/layout/ThemeToggle.tsx`) lets a user override the OS preference,
+persisted to `localStorage` and applied as `data-theme` on `<html>` — the
+override CSS in `globals.css` is more specific than the `prefers-color-scheme`
+media query, so it always wins when set. An inline script in the root layout
+applies a stored override before first paint (see Next's ["preventing flash
+before hydration"](https://nextjs.org/docs/app/guides/preventing-flash-before-hydration)
+guide) — "System" (no stored override) stays a pure CSS media query with zero
+JS involved, unchanged from before this existed.
+
+**Accessible dialogs**: the transaction detail modal
+(`components/transactions/TransactionDetailModal.tsx`) is built on
+[Radix UI's Dialog primitive](https://www.radix-ui.com/primitives/docs/components/dialog)
+via a small styled wrapper (`components/ui/Dialog.tsx`) — focus trap, focus
+restoration on close, Escape, outside-click, and ARIA wiring all come from
+Radix rather than being hand-rolled. The triggering table row is a real
+keyboard target (`tabIndex`, `role="button"`, Enter/Space activation) so the
+whole open → interact → close loop is keyboard-operable, not just
+mouse-driven.

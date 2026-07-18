@@ -116,7 +116,24 @@ export function TransactionsTable({
                   <tr
                     key={t.id}
                     onClick={() => onSelect?.(t)}
-                    className={`hover:bg-line/50 ${onSelect ? "cursor-pointer" : ""}`}
+                    // A row's onClick alone is keyboard-unreachable — no
+                    // native semantics make a <tr> focusable or activatable
+                    // by Enter/Space. tabIndex + role="button" + the key
+                    // handler make it a real, keyboard-operable trigger for
+                    // the receipt/detail dialog, not just a mouse target.
+                    tabIndex={onSelect ? 0 : undefined}
+                    role={onSelect ? "button" : undefined}
+                    onKeyDown={
+                      onSelect
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onSelect(t);
+                            }
+                          }
+                        : undefined
+                    }
+                    className={`hover:bg-line/50 ${onSelect ? "cursor-pointer focus:bg-line/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset" : ""}`}
                   >
                     <td className="max-w-[16rem] truncate px-5 py-3 text-ink">
                       {t.merchant_name ?? "Unknown merchant"}

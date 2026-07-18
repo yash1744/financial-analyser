@@ -7,6 +7,8 @@ import { useState } from "react";
 import { api } from "@/lib/api/endpoints";
 import { useUser } from "@/lib/user";
 
+import { ThemeToggle } from "./ThemeToggle";
+
 const links = [
   { href: "/", label: "Dashboard", icon: "◧" },
   { href: "/transactions", label: "Transactions", icon: "⇄" },
@@ -56,16 +58,19 @@ function UserFooter() {
     clearUser();
   };
   return (
-    <div className="mt-auto border-t border-line pt-4">
-      <p className="truncate text-xs text-ink-3" title={user.email}>
-        {user.email}
-      </p>
-      <button
-        onClick={signOut}
-        className="mt-1 text-xs text-ink-3 underline-offset-2 hover:text-ink hover:underline"
-      >
-        Sign out
-      </button>
+    <div className="mt-auto space-y-3 border-t border-line pt-4">
+      <ThemeToggle />
+      <div>
+        <p className="truncate text-xs text-ink-3" title={user.email}>
+          {user.email}
+        </p>
+        <button
+          onClick={signOut}
+          className="mt-1 text-xs text-ink-3 underline-offset-2 hover:text-ink hover:underline"
+        >
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }
@@ -87,8 +92,9 @@ export function Sidebar() {
         </button>
       </header>
       {open && (
-        <div className="border-b border-line bg-surface p-4 md:hidden">
+        <div className="space-y-3 border-b border-line bg-surface p-4 md:hidden">
           <NavLinks onNavigate={() => setOpen(false)} />
+          <ThemeToggle />
         </div>
       )}
 

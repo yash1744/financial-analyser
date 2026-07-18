@@ -118,6 +118,9 @@ export interface TransactionListParams {
   account_id?: string;
   category_id?: string;
   classification?: TransactionClassification;
+  /** Case-insensitive substring match on the merchant name (mirrors the
+   * backend's TransactionSearchParams.merchant). */
+  merchant?: string;
   start_date?: string;
   end_date?: string;
   min_amount?: string;

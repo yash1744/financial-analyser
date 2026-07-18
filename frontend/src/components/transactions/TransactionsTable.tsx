@@ -59,6 +59,7 @@ export function TransactionsTable({
   categories,
   faded = false,
   onSelect,
+  onFilterByMerchant,
 }: {
   transactions: Transaction[];
   accounts: Account[];
@@ -67,6 +68,9 @@ export function TransactionsTable({
   faded?: boolean;
   /** open the detail/receipt view for a transaction */
   onSelect?: (transaction: Transaction) => void;
+  /** filter the list down to this merchant name (additive with other
+   * active filters — the same effect as picking a value in the filter bar) */
+  onFilterByMerchant?: (merchantName: string) => void;
 }) {
   const accountById = useMemo(
     () => new Map(accounts.map((a) => [a.id, a])),
@@ -113,30 +117,25 @@ export function TransactionsTable({
               {group.transactions.map((t) => {
                 const inflow = toNumber(t.amount) < 0;
                 return (
-                  <tr
-                    key={t.id}
-                    onClick={() => onSelect?.(t)}
-                    // A row's onClick alone is keyboard-unreachable — no
-                    // native semantics make a <tr> focusable or activatable
-                    // by Enter/Space. tabIndex + role="button" + the key
-                    // handler make it a real, keyboard-operable trigger for
-                    // the receipt/detail dialog, not just a mouse target.
-                    tabIndex={onSelect ? 0 : undefined}
-                    role={onSelect ? "button" : undefined}
-                    onKeyDown={
-                      onSelect
-                        ? (e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              onSelect(t);
-                            }
-                          }
-                        : undefined
-                    }
-                    className={`hover:bg-line/50 ${onSelect ? "cursor-pointer focus:bg-line/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset" : ""}`}
-                  >
+                  // Plain <tr>: interactivity lives on the two buttons
+                  // below, not the row — a row-sized click/keyboard target
+                  // meant assistive tech saw a table row announced as a
+                  // button. Two native buttons need no role/tabIndex/keydown
+                  // reimplementation and each has one unambiguous action.
+                  <tr key={t.id} className="hover:bg-line/50">
                     <td className="max-w-[16rem] truncate px-5 py-3 text-ink">
-                      {t.merchant_name ?? "Unknown merchant"}
+                      {t.merchant_name && onFilterByMerchant ? (
+                        <button
+                          type="button"
+                          onClick={() => onFilterByMerchant(t.merchant_name!)}
+                          title={`Show all "${t.merchant_name}" transactions`}
+                          className="truncate text-left hover:underline focus-visible:underline focus-visible:outline-none"
+                        >
+                          {t.merchant_name}
+                        </button>
+                      ) : (
+                        t.merchant_name ?? "Unknown merchant"
+                      )}
                     </td>
                     <td className="hidden px-3 py-3 text-ink-2 md:table-cell">
                       {t.category_id
@@ -166,7 +165,18 @@ export function TransactionsTable({
                       {inflow ? "+" : "−"}
                       {formatMoney(Math.abs(toNumber(t.amount)), t.currency)}
                     </td>
-                    <td className="px-3 py-3 text-right text-ink-3">›</td>
+                    <td className="px-3 py-3 text-right">
+                      {onSelect && (
+                        <button
+                          type="button"
+                          onClick={() => onSelect(t)}
+                          aria-label="View transaction details"
+                          className="rounded-md px-1.5 py-1 text-ink-3 hover:bg-line hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                        >
+                          ›
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

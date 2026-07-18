@@ -16,6 +16,7 @@ export interface Filters {
   account_id: string;
   category_id: string;
   classification: TransactionClassification | "";
+  merchant: string;
   start_date: string;
   end_date: string;
   min_amount: string;
@@ -109,6 +110,14 @@ export function TransactionFilters({
             </option>
           ))}
         </Select>
+      </Field>
+      <Field label="Merchant">
+        <TextInput
+          type="text"
+          placeholder="Search merchant"
+          value={draft.merchant}
+          onChange={(e) => set("merchant", e.target.value)}
+        />
       </Field>
       <Field label="From">
         <TextInput

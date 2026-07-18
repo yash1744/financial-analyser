@@ -9,7 +9,7 @@ Next.js frontend for the FastAPI backend in the repository root.
 | Route | Purpose |
 |---|---|
 | `/` | Dashboard — balance/spending KPI tiles, spending-vs-income chart, recent transactions |
-| `/transactions` | Filterable, sortable, paginated table grouped under date headers; click a row for its detail + receipt panel |
+| `/transactions` | Filterable, sortable, paginated table grouped under date headers; click a merchant name to filter to that merchant, click the arrow to open detail + receipt |
 | `/accounts` | Synced accounts with balances, manual sync, and editable per-account nicknames |
 | `/connect` | Plaid Link flow: link token → Link UI → exchange → auto-sync |
 | `/analytics` | Monthly spending/income, month-over-month trend, category breakdown, top merchants |
@@ -86,7 +86,13 @@ JS involved, unchanged from before this existed.
 [Radix UI's Dialog primitive](https://www.radix-ui.com/primitives/docs/components/dialog)
 via a small styled wrapper (`components/ui/Dialog.tsx`) — focus trap, focus
 restoration on close, Escape, outside-click, and ARIA wiring all come from
-Radix rather than being hand-rolled. The triggering table row is a real
-keyboard target (`tabIndex`, `role="button"`, Enter/Space activation) so the
-whole open → interact → close loop is keyboard-operable, not just
-mouse-driven.
+Radix rather than being hand-rolled.
+
+**Transaction row interactions**: each row exposes two separate native
+`<button>`s rather than one row-sized click target — the merchant name
+(filters the list to that merchant, additive with any other active filters,
+same mechanism as picking a value in the filter bar) and a trailing arrow
+(opens the detail/receipt dialog above). The `<tr>` itself carries no
+click/keyboard handling; both buttons get standard focus/Enter/Space
+behavior for free, and each has an explicit accessible name, so the whole
+interaction is keyboard-operable without any custom key handling.

@@ -21,6 +21,7 @@ const emptyFilters: Filters = {
   account_id: "",
   category_id: "",
   classification: "",
+  merchant: "",
   start_date: "",
   end_date: "",
   min_amount: "",
@@ -43,6 +44,7 @@ export default function TransactionsPage() {
       account_id: filters.account_id || undefined,
       category_id: filters.category_id || undefined,
       classification: filters.classification || undefined,
+      merchant: filters.merchant || undefined,
       start_date: filters.start_date || undefined,
       end_date: filters.end_date || undefined,
       min_amount: filters.min_amount || undefined,
@@ -115,6 +117,9 @@ export default function TransactionsPage() {
               categories={categories.data ?? []}
               faded={transactions.isPlaceholderData}
               onSelect={setSelected}
+              onFilterByMerchant={(merchant) =>
+                applyFilters({ ...filters, merchant })
+              }
             />
             <div className="flex items-center justify-between border-t border-line px-5 py-3">
               <p className="text-xs text-ink-3">

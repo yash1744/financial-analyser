@@ -210,6 +210,33 @@ async def test_read_apis():
             })
             assert resp.status_code == 422
 
+            # merchant filter: case-insensitive substring match on the REST
+            # route (issue #43 — previously only exercised via the AI tool,
+            # never through GET /transactions directly)
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "merchant": "coffee",
+            })
+            assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "merchant": "Alpha Coffee",  # the full name, as the UI sends it
+            })
+            assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "merchant": "no-such-merchant",
+            })
+            assert resp.json()["items"] == []
+            # combines with other filters, same as classification above:
+            # "r" alone matches Beta Grocers/t2, Gamma Refund/t3, Delta Air/t4
+            # (spanning both accounts); adding account_id narrows to just t2
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "merchant": "r",
+            })
+            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t2", "t3", "t4"}
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "merchant": "r", "account_id": chk_id,
+            })
+            assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t2"]
+
             # sorting
             resp = await client.get("/api/v1/transactions", headers=headers, params={
                 "sort_by": "amount", "sort_dir": "asc",

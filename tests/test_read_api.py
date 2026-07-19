@@ -158,7 +158,9 @@ async def test_read_apis():
                 "id", "account_id", "plaid_transaction_id", "transaction_date",
                 "merchant_name", "amount", "currency", "category_id",
                 "transaction_type", "classification", "pending", "created_at",
+                "labels",
             }
+            assert body["items"][0]["labels"] == []
             # rows created without an explicit classification default to it
             assert body["items"][0]["classification"] == "unknown"
 

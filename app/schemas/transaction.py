@@ -6,6 +6,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import TransactionClassification, TransactionType
+from app.schemas.label import LabelResponse
 
 
 class TransactionsSyncApiRequest(BaseModel):
@@ -44,6 +45,7 @@ class TransactionResponse(BaseModel):
     classification: TransactionClassification
     pending: bool
     created_at: datetime
+    labels: list[LabelResponse]
 
 
 class TransactionSearchParams(BaseModel):
@@ -58,6 +60,10 @@ class TransactionSearchParams(BaseModel):
         min_length=1,
         max_length=100,
         description="Case-insensitive substring match on the merchant name",
+    )
+    label_ids: list[uuid.UUID] | None = Field(
+        default=None,
+        description="Match transactions carrying any one of these labels",
     )
     start_date: date | None = None  # inclusive
     end_date: date | None = None  # inclusive

@@ -21,12 +21,15 @@ export class ApiError extends Error {
   }
 }
 
-type QueryValue = string | number | boolean | undefined | null;
+type QueryValue = string | number | boolean | undefined | null | string[];
 
 function buildQuery(params: Record<string, QueryValue>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== "") {
+    if (Array.isArray(value)) {
+      // repeated params (?key=a&key=b), matching FastAPI's list-query convention
+      for (const item of value) search.append(key, item);
+    } else if (value !== undefined && value !== null && value !== "") {
       search.set(key, String(value));
     }
   }

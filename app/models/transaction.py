@@ -14,6 +14,7 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.account import Account
     from app.models.category import Category
+    from app.models.label import Label
 
 
 class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -67,3 +68,6 @@ class Transaction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     account: Mapped["Account"] = relationship(back_populates="transactions")
     category: Mapped["Category | None"] = relationship(back_populates="transactions")
+    labels: Mapped[list["Label"]] = relationship(
+        secondary="transaction_labels", order_by="Label.name"
+    )

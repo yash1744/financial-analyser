@@ -6,6 +6,7 @@ from fastapi.responses import Response
 
 from app.api.deps import (
     CurrentUserDep,
+    LabelServiceDep,
     ReceiptServiceDep,
     TransactionQueryServiceDep,
     TransactionSyncServiceDep,
@@ -141,3 +142,28 @@ async def delete_receipt_image(
     service: ReceiptServiceDep,
 ) -> None:
     await service.delete_image(user.id, transaction_id, image_id)
+
+
+# --- labels ---
+
+
+@router.post("/{transaction_id}/labels/{label_id}", response_model=TransactionResponse)
+async def assign_label(
+    transaction_id: uuid.UUID,
+    label_id: uuid.UUID,
+    user: CurrentUserDep,
+    service: LabelServiceDep,
+) -> TransactionResponse:
+    """Attach one of the caller's own labels; already-assigned is a no-op,
+    not an error."""
+    return await service.assign_label(user.id, transaction_id, label_id)
+
+
+@router.delete("/{transaction_id}/labels/{label_id}", response_model=TransactionResponse)
+async def unassign_label(
+    transaction_id: uuid.UUID,
+    label_id: uuid.UUID,
+    user: CurrentUserDep,
+    service: LabelServiceDep,
+) -> TransactionResponse:
+    return await service.unassign_label(user.id, transaction_id, label_id)

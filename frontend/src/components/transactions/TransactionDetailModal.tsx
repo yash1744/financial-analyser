@@ -20,6 +20,7 @@ import {
 import type { Account, Category, Transaction } from "@/lib/api/types";
 import { formatDate, formatMoney, toNumber } from "@/lib/format";
 
+import { LabelsPanel } from "./LabelsPanel";
 import { ReceiptPanel } from "./ReceiptPanel";
 
 export function TransactionDetailModal({
@@ -75,6 +76,13 @@ export function TransactionDetailModal({
               </button>
             </DialogClose>
           </div>
+        </div>
+
+        <div className="border-b border-line px-5 py-4">
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">
+            Labels
+          </h4>
+          <LabelsPanel transactionId={transaction.id} />
         </div>
 
         <div className="px-5 py-4">

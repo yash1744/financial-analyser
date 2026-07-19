@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Field, Select, TextInput } from "@/components/ui/Field";
 import type {
   Account,
   Category,
+  Label,
   SortDir,
   TransactionClassification,
   TransactionSortBy,
@@ -17,12 +18,85 @@ export interface Filters {
   category_id: string;
   classification: TransactionClassification | "";
   merchant: string;
+  label_ids: string[];
   start_date: string;
   end_date: string;
   min_amount: string;
   max_amount: string;
   sort_by: TransactionSortBy;
   sort_dir: SortDir;
+}
+
+/** Every other filter is single-value, a plain <select>. Labels are the
+ * first multi-value filter this component has, so they get their own
+ * checkbox popover instead — matches any of the checked labels (OR). */
+function LabelFilterField({
+  labels,
+  selected,
+  onChange,
+}: {
+  labels: Label[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  const toggle = (id: string) =>
+    onChange(
+      selected.includes(id)
+        ? selected.filter((s) => s !== id)
+        : [...selected, id],
+    );
+
+  return (
+    <Field label="Labels">
+      <div className="relative" ref={panelRef}>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-left text-sm text-ink hover:border-ink-3"
+        >
+          {selected.length === 0 ? "All" : `${selected.length} selected`}
+        </button>
+        {open && (
+          <div className="absolute left-0 top-full z-10 mt-1 w-48 rounded-lg border border-line bg-surface p-2 shadow-lg">
+            {labels.length === 0 ? (
+              <p className="px-1 py-1 text-xs text-ink-3">No labels yet.</p>
+            ) : (
+              <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                {labels.map((label) => (
+                  <label
+                    key={label.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-ink hover:bg-line"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(label.id)}
+                      onChange={() => toggle(label.id)}
+                      className="accent-accent"
+                    />
+                    <span className="truncate">{label.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Field>
+  );
 }
 
 const CLASSIFICATIONS: { value: TransactionClassification; label: string }[] = [
@@ -40,12 +114,14 @@ export function TransactionFilters({
   onReset,
   accounts,
   categories,
+  labels,
 }: {
   value: Filters;
   onChange: (next: Filters) => void;
   onReset: () => void;
   accounts: Account[];
   categories: Category[];
+  labels: Label[];
 }) {
   // Local draft so typing doesn't fire a request per keystroke;
   // re-synced during render when the applied value changes (e.g. Reset)
@@ -119,6 +195,11 @@ export function TransactionFilters({
           onChange={(e) => set("merchant", e.target.value)}
         />
       </Field>
+      <LabelFilterField
+        labels={labels}
+        selected={draft.label_ids}
+        onChange={(next) => set("label_ids", next)}
+      />
       <Field label="From">
         <TextInput
           type="date"

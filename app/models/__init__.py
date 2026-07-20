@@ -4,6 +4,7 @@ from app.models.account import Account
 from app.models.auth_token import AuthToken
 from app.models.category import Category
 from app.models.conversation import Conversation
+from app.models.label import Label, TransactionLabel
 from app.models.message import Message
 from app.models.plaid_item import PlaidItem
 from app.models.plaid_sync_state import PlaidSyncState
@@ -17,6 +18,7 @@ __all__ = [
     "AuthToken",
     "Category",
     "Conversation",
+    "Label",
     "Message",
     "PlaidItem",
     "PlaidSyncState",
@@ -24,5 +26,6 @@ __all__ = [
     "Receipt",
     "ReceiptImage",
     "Transaction",
+    "TransactionLabel",
     "User",
 ]

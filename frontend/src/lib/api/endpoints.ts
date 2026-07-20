@@ -9,6 +9,7 @@ import type {
   Category,
   CategoryBreakdownResponse,
   DetailResponse,
+  Label,
   LinkTokenResponse,
   MonthOverMonthResponse,
   MonthlySpendingResponse,
@@ -17,6 +18,7 @@ import type {
   Receipt,
   ReceiptDetailsUpdate,
   TopMerchantsResponse,
+  Transaction,
   TransactionListParams,
   TransactionsSyncResponse,
 } from "./types";
@@ -66,6 +68,9 @@ export const api = {
   listTransactions: (params: TransactionListParams) =>
     apiGet<PaginatedTransactions>("/transactions", { ...params }),
 
+  getTransaction: (transactionId: string) =>
+    apiGet<Transaction>(`/transactions/${transactionId}`),
+
   listCategories: () => apiGet<Category[]>("/categories"),
 
   monthlySpending: (
@@ -110,4 +115,21 @@ export const api = {
   /** Same-origin URL for an image's bytes (auth rides the cookie). */
   receiptImageUrl: (transactionId: string, imageId: string) =>
     `/api/v1/transactions/${transactionId}/receipt/images/${imageId}`,
+
+  // --- labels ---
+
+  listLabels: () => apiGet<Label[]>("/labels"),
+
+  createLabel: (name: string) => apiPost<Label>("/labels", { name }),
+
+  renameLabel: (labelId: string, name: string) =>
+    apiPatch<Label>(`/labels/${labelId}`, { name }),
+
+  deleteLabel: (labelId: string) => apiDelete<void>(`/labels/${labelId}`),
+
+  assignLabel: (transactionId: string, labelId: string) =>
+    apiPost<Transaction>(`/transactions/${transactionId}/labels/${labelId}`, {}),
+
+  unassignLabel: (transactionId: string, labelId: string) =>
+    apiDelete<Transaction>(`/transactions/${transactionId}/labels/${labelId}`),
 };

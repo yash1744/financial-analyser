@@ -74,6 +74,7 @@ class TransactionQueryService:
             category_id=query.category_id,
             classification=query.classification,
             merchant=query.merchant,
+            label_ids=query.label_ids,
             start_date=query.start_date,
             end_date=query.end_date,
             min_amount=query.min_amount,

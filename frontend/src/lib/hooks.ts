@@ -14,6 +14,7 @@ import { api } from "./api/endpoints";
 import type {
   Account,
   ReceiptDetailsUpdate,
+  Transaction,
   TransactionListParams,
 } from "./api/types";
 
@@ -21,7 +22,10 @@ export const queryKeys = {
   accounts: (userId: string) => ["accounts", userId] as const,
   transactions: (userId: string, params: TransactionListParams) =>
     ["transactions", userId, params] as const,
+  transaction: (transactionId: string) =>
+    ["transactions", "one", transactionId] as const,
   categories: ["categories"] as const,
+  labels: ["labels"] as const,
   monthlySpending: (userId: string, opts: object) =>
     ["analytics", "monthly-spending", userId, opts] as const,
   categoryBreakdown: (userId: string, opts: object) =>
@@ -54,6 +58,77 @@ export function useCategories() {
     queryFn: () => api.listCategories(),
     staleTime: 5 * 60 * 1000,
   });
+}
+
+/** One transaction, kept fresh independently of whatever list page it was
+ * opened from — the detail modal reads labels through this, not through
+ * the (possibly stale, filter-scoped) row it was opened with. */
+export function useTransactionDetail(transactionId: string) {
+  return useQuery({
+    queryKey: queryKeys.transaction(transactionId),
+    queryFn: () => api.getTransaction(transactionId),
+  });
+}
+
+export function useLabels() {
+  return useQuery({
+    queryKey: queryKeys.labels,
+    queryFn: () => api.listLabels(),
+  });
+}
+
+/** Create/rename/delete the caller's labels. Any of the three can change
+ * what a transaction's `labels` field shows (a rename changes the name in
+ * place, a delete removes the assignment entirely) — invalidate both the
+ * labels list and every cached transaction view rather than trying to
+ * patch each one. */
+export function useLabelManagement() {
+  const queryClient = useQueryClient();
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.labels });
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+  };
+
+  const createLabel = useMutation({
+    mutationFn: (name: string) => api.createLabel(name),
+    onSuccess: invalidateAll,
+  });
+  const renameLabel = useMutation({
+    mutationFn: ({ labelId, name }: { labelId: string; name: string }) =>
+      api.renameLabel(labelId, name),
+    onSuccess: invalidateAll,
+  });
+  const deleteLabel = useMutation({
+    mutationFn: (labelId: string) => api.deleteLabel(labelId),
+    onSuccess: invalidateAll,
+  });
+
+  return { createLabel, renameLabel, deleteLabel };
+}
+
+/** Assign/remove labels on one transaction. The backend returns the full
+ * updated transaction, which is written straight into that transaction's
+ * own query cache (instant modal update) — the broader transactions list
+ * is invalidated alongside so the table's chips catch up too. */
+export function useLabelAssignment(transactionId: string) {
+  const queryClient = useQueryClient();
+  const onSettled = (updated: Transaction | undefined) => {
+    if (updated) {
+      queryClient.setQueryData(queryKeys.transaction(transactionId), updated);
+    }
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+  };
+
+  const assign = useMutation({
+    mutationFn: (labelId: string) => api.assignLabel(transactionId, labelId),
+    onSuccess: onSettled,
+  });
+  const unassign = useMutation({
+    mutationFn: (labelId: string) => api.unassignLabel(transactionId, labelId),
+    onSuccess: onSettled,
+  });
+
+  return { assign, unassign };
 }
 
 export function useMonthlySpending(

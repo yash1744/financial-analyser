@@ -29,6 +29,7 @@ from app.services.email import EmailSender, build_email_sender
 from app.services.exceptions import AuthenticationError
 from app.services.health import HealthService
 from app.services.insights import InsightsService
+from app.services.labels import LabelService
 from app.services.plaid import PlaidService, build_plaid_client
 from app.services.plaid_link import PlaidLinkService
 from app.services.queries import (
@@ -175,6 +176,13 @@ TransactionQueryServiceDep = Annotated[
     TransactionQueryService, Depends(get_transaction_query_service)
 ]
 CategoryQueryServiceDep = Annotated[CategoryQueryService, Depends(get_category_query_service)]
+
+
+def get_label_service(session: DbSessionDep) -> LabelService:
+    return LabelService(session=session)
+
+
+LabelServiceDep = Annotated[LabelService, Depends(get_label_service)]
 
 
 def get_object_storage(settings: SettingsDep) -> ObjectStorage:

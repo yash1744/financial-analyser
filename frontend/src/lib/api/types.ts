@@ -53,6 +53,12 @@ export interface AccountsSyncResponse {
 
 // --- transactions ---
 
+export interface Label {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 export type TransactionType = "debit" | "credit";
 
 export type TransactionClassification =
@@ -76,6 +82,7 @@ export interface Transaction {
   classification: TransactionClassification;
   pending: boolean;
   created_at: string;
+  labels: Label[];
 }
 
 export type TransactionSortBy = "transaction_date" | "amount" | "merchant_name";
@@ -121,6 +128,8 @@ export interface TransactionListParams {
   /** Case-insensitive substring match on the merchant name (mirrors the
    * backend's TransactionSearchParams.merchant). */
   merchant?: string;
+  /** Match transactions carrying any one of these labels (OR). */
+  label_ids?: string[];
   start_date?: string;
   end_date?: string;
   min_amount?: string;

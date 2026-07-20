@@ -9,7 +9,7 @@ Next.js frontend for the FastAPI backend in the repository root.
 | Route | Purpose |
 |---|---|
 | `/` | Dashboard — balance/spending KPI tiles, spending-vs-income chart, recent transactions |
-| `/transactions` | Filterable, sortable, paginated table grouped under date headers; click a merchant name to filter to that merchant, click the arrow to open detail + receipt |
+| `/transactions` | Filterable, sortable, paginated table grouped under date headers; click a merchant name to filter to that merchant, click the arrow to open detail + receipt + labels |
 | `/accounts` | Synced accounts with balances, manual sync, and editable per-account nicknames |
 | `/connect` | Plaid Link flow: link token → Link UI → exchange → auto-sync |
 | `/analytics` | Monthly spending/income, month-over-month trend, category breakdown, top merchants |
@@ -96,3 +96,18 @@ same mechanism as picking a value in the filter bar) and a trailing arrow
 click/keyboard handling; both buttons get standard focus/Enter/Space
 behavior for free, and each has an explicit accessible name, so the whole
 interaction is keyboard-operable without any custom key handling.
+
+**Labels** (`components/transactions/LabelsPanel.tsx`): user-created,
+private tags assignable to any number of transactions. The detail modal's
+Labels section reads through a dedicated `useTransactionDetail` query
+rather than the (possibly stale) row it was opened from, so assign/remove
+reflects immediately regardless of which filtered page the row came from;
+assigning writes the fresh transaction straight into that query's cache
+and invalidates the transactions list so the table's chips catch up too.
+The "+ Add label" control is a small hand-rolled combobox (search existing
+labels or create one inline) rather than a native `<select>`, since it
+needs both free-text creation and click-to-assign in one control. The
+filter bar's Labels field is the first *multi-value* filter in
+`TransactionFilters.tsx` — every other field is a single-value `<select>`;
+labels use a checkbox popover instead and match any of the selected labels
+(OR), consistent with how the other filters compose independently.

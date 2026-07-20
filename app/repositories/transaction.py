@@ -4,9 +4,11 @@ from decimal import Decimal
 from itertools import batched
 
 from sqlalchemy import Row, delete, func, select
+from sqlalchemy.orm import selectinload
 
 from app.models.account import Account
 from app.models.enums import TransactionClassification
+from app.models.label import TransactionLabel
 from app.models.plaid_item import PlaidItem
 from app.models.raw_plaid_transaction import RawPlaidTransaction
 from app.models.transaction import Transaction
@@ -51,6 +53,7 @@ class TransactionRepository(BaseRepository):
             .join(Account, Transaction.account_id == Account.id)
             .join(PlaidItem, Account.plaid_item_id == PlaidItem.id)
             .where(Transaction.id == transaction_id, PlaidItem.user_id == user_id)
+            .options(selectinload(Transaction.labels))
         )
         return result.scalar_one_or_none()
 
@@ -62,6 +65,7 @@ class TransactionRepository(BaseRepository):
         category_id: uuid.UUID | None = None,
         classification: TransactionClassification | None = None,
         merchant: str | None = None,
+        label_ids: list[uuid.UUID] | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
         min_amount: Decimal | None = None,
@@ -82,6 +86,19 @@ class TransactionRepository(BaseRepository):
         if merchant is not None:
             conditions.append(
                 Transaction.merchant_name.ilike(f"%{_escape_like(merchant)}%")
+            )
+        if label_ids is not None:
+            # Semi-join, not a JOIN to transaction_labels: a transaction
+            # matching more than one requested label must still appear
+            # once, in both this page and the total count below (which
+            # counts over this same `scoped` query) — a JOIN would
+            # duplicate that row in both places.
+            conditions.append(
+                Transaction.id.in_(
+                    select(TransactionLabel.transaction_id).where(
+                        TransactionLabel.label_id.in_(label_ids)
+                    )
+                )
             )
         if start_date is not None:
             conditions.append(Transaction.transaction_date >= start_date)
@@ -107,7 +124,10 @@ class TransactionRepository(BaseRepository):
         ordering = sort_column.desc() if sort_dir == "desc" else sort_column.asc()
         result = await self.session.execute(
             # id as tiebreaker keeps pagination stable across equal sort keys
-            scoped.order_by(ordering, Transaction.id).limit(limit).offset(offset)
+            scoped.order_by(ordering, Transaction.id)
+            .limit(limit)
+            .offset(offset)
+            .options(selectinload(Transaction.labels))
         )
         return list(result.scalars()), total or 0
 

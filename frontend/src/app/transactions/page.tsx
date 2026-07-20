@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonLines } from "@/components/ui/Skeleton";
-import { useAccounts, useCategories, useTransactions } from "@/lib/hooks";
+import { useAccounts, useCategories, useLabels, useTransactions } from "@/lib/hooks";
 import type { Transaction } from "@/lib/api/types";
 import { useRequiredUser } from "@/lib/user";
 
@@ -22,6 +22,7 @@ const emptyFilters: Filters = {
   category_id: "",
   classification: "",
   merchant: "",
+  label_ids: [],
   start_date: "",
   end_date: "",
   min_amount: "",
@@ -38,6 +39,7 @@ export default function TransactionsPage() {
 
   const accounts = useAccounts(user.id);
   const categories = useCategories();
+  const labels = useLabels();
 
   const params = useMemo(
     () => ({
@@ -45,6 +47,7 @@ export default function TransactionsPage() {
       category_id: filters.category_id || undefined,
       classification: filters.classification || undefined,
       merchant: filters.merchant || undefined,
+      label_ids: filters.label_ids.length > 0 ? filters.label_ids : undefined,
       start_date: filters.start_date || undefined,
       end_date: filters.end_date || undefined,
       min_amount: filters.min_amount || undefined,
@@ -83,6 +86,7 @@ export default function TransactionsPage() {
           onReset={() => applyFilters(emptyFilters)}
           accounts={accounts.data ?? []}
           categories={categories.data ?? []}
+          labels={labels.data ?? []}
         />
       </Card>
 

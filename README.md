@@ -35,6 +35,12 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/transactions/{id}/receipt/images` | Upload one image (multipart `file`; JPEG/PNG/WebP, ≤10/txn) |
 | GET | `/api/v1/transactions/{id}/receipt/images/{image_id}` | The image bytes (auth-gated) |
 | DELETE | `/api/v1/transactions/{id}/receipt/images/{image_id}` | Delete one image |
+| GET | `/api/v1/labels` | The caller's own labels (private per user, unlike categories) |
+| POST | `/api/v1/labels` | Create a label |
+| PATCH | `/api/v1/labels/{id}` | Rename a label |
+| DELETE | `/api/v1/labels/{id}` | Delete a label (cascades off every transaction it was assigned to) |
+| POST | `/api/v1/transactions/{id}/labels/{label_id}` | Assign a label to a transaction (idempotent) |
+| DELETE | `/api/v1/transactions/{id}/labels/{label_id}` | Remove a label from a transaction |
 | GET | `/api/v1/categories` | All categories (flat list with parent ids) |
 | GET | `/api/v1/analytics/monthly-spending` | Spending / income / net per calendar month |
 | GET | `/api/v1/analytics/category-breakdown` | Spending by category with % shares |
@@ -407,9 +413,11 @@ the service boundary.
 
 `GET /transactions` supports:
 
-- **Filters**: `account_id`, `category_id`, `start_date`/`end_date`
-  (inclusive), `min_amount`/`max_amount` — all combinable; inverted ranges
-  are rejected with 422.
+- **Filters**: `account_id`, `category_id`, `classification`, `merchant`
+  (case-insensitive substring), `label_ids` (repeatable — matches *any* of
+  the given labels), `start_date`/`end_date` (inclusive),
+  `min_amount`/`max_amount` — all combinable; inverted ranges are rejected
+  with 422.
 - **Sorting**: `sort_by` = `transaction_date` (default) | `amount` |
   `merchant_name`, `sort_dir` = `desc` (default) | `asc`; row id breaks
   ties so pagination is stable.
@@ -507,9 +515,11 @@ tools, SQL, and SSE framing with no key and no network;
 
 ```
 users 1──* plaid_items 1──* accounts 1──* transactions *──1 categories (optional)
-  │             │                                              └── self-ref parent
+  │             │                                  │           └── self-ref parent
+  │             │                                  └── *──* labels  (via transaction_labels)
   │             ├── 1──1 plaid_sync_state          (one /transactions/sync cursor per item)
   │             └── 1──* raw_plaid_transactions    (verbatim JSONB payloads)
+  ├── 1──* labels                                  (private per user, unlike categories)
   └── 1──* conversations 1──* messages             (chat history; content is JSONB blocks)
 ```
 

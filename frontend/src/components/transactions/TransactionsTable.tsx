@@ -123,18 +123,37 @@ export function TransactionsTable({
                   // button. Two native buttons need no role/tabIndex/keydown
                   // reimplementation and each has one unambiguous action.
                   <tr key={t.id} className="hover:bg-line/50">
-                    <td className="max-w-[16rem] truncate px-5 py-3 text-ink">
-                      {t.merchant_name && onFilterByMerchant ? (
-                        <button
-                          type="button"
-                          onClick={() => onFilterByMerchant(t.merchant_name!)}
-                          title={`Show all "${t.merchant_name}" transactions`}
-                          className="truncate text-left hover:underline focus-visible:underline focus-visible:outline-none"
-                        >
-                          {t.merchant_name}
-                        </button>
-                      ) : (
-                        t.merchant_name ?? "Unknown merchant"
+                    <td className="max-w-[16rem] px-5 py-3 text-ink">
+                      <div className="truncate">
+                        {t.merchant_name && onFilterByMerchant ? (
+                          <button
+                            type="button"
+                            onClick={() => onFilterByMerchant(t.merchant_name!)}
+                            title={`Show all "${t.merchant_name}" transactions`}
+                            className="truncate text-left hover:underline focus-visible:underline focus-visible:outline-none"
+                          >
+                            {t.merchant_name}
+                          </button>
+                        ) : (
+                          t.merchant_name ?? "Unknown merchant"
+                        )}
+                      </div>
+                      {t.labels.length > 0 && (
+                        <div className="mt-0.5 flex gap-1 truncate">
+                          {t.labels.slice(0, 2).map((label) => (
+                            <span
+                              key={label.id}
+                              className="shrink-0 rounded-full bg-line px-1.5 py-0.5 text-[10px] font-medium text-ink-3"
+                            >
+                              {label.name}
+                            </span>
+                          ))}
+                          {t.labels.length > 2 && (
+                            <span className="shrink-0 text-[10px] text-ink-3">
+                              +{t.labels.length - 2}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="hidden px-3 py-3 text-ink-2 md:table-cell">

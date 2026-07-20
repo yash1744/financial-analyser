@@ -173,6 +173,19 @@ export interface Category {
   created_at: string;
 }
 
+// --- user categories ---
+
+export interface UserCategory {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface CategoryMapping {
+  category_id: string;
+  user_category_id: string;
+}
+
 // --- plaid ---
 
 export type PlaidItemStatus =
@@ -212,6 +225,9 @@ export interface MonthlySpendingResponse {
 export interface CategoryBreakdownItem {
   category_id: string | null;
   category_name: string;
+  /** True when category_id is one of the caller's own user categories (a
+   * mapped rollup); false for a raw Plaid category or "Uncategorized". */
+  is_custom: boolean;
   total: string;
   transaction_count: number;
   share_pct: number;

@@ -52,6 +52,12 @@ class MonthlySpendingResponse(BaseModel):
 class CategoryBreakdownItem(BaseModel):
     category_id: uuid.UUID | None
     category_name: str  # "Uncategorized" when category_id is null
+    # True when category_id is a user_categories id (a mapped rollup of one
+    # or more Plaid categories); False when it's a raw Plaid categories id,
+    # or category_id is null (uncategorized). The two id spaces are
+    # different tables that happen to share a UUID type — not
+    # interchangeable without this flag.
+    is_custom: bool
     total: Decimal
     transaction_count: int
     share_pct: float  # of total spending in the range, 0–100

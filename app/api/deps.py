@@ -40,6 +40,7 @@ from app.services.queries import (
 from app.services.receipts import ReceiptService
 from app.services.storage import ObjectStorage, build_object_storage
 from app.services.transaction_sync import TransactionSyncService
+from app.services.user_category import UserCategoryService
 from app.utils.crypto import TokenCipher
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -183,6 +184,13 @@ def get_label_service(session: DbSessionDep) -> LabelService:
 
 
 LabelServiceDep = Annotated[LabelService, Depends(get_label_service)]
+
+
+def get_user_category_service(session: DbSessionDep) -> UserCategoryService:
+    return UserCategoryService(session=session)
+
+
+UserCategoryServiceDep = Annotated[UserCategoryService, Depends(get_user_category_service)]
 
 
 def get_object_storage(settings: SettingsDep) -> ObjectStorage:

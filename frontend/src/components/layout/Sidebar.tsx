@@ -14,6 +14,7 @@ const links = [
   { href: "/transactions", label: "Transactions", icon: "⇄" },
   { href: "/accounts", label: "Accounts", icon: "▤" },
   { href: "/analytics", label: "Analytics", icon: "◔" },
+  { href: "/categories", label: "Categories", icon: "▥" },
   { href: "/assistant", label: "AI Assistant", icon: "✦" },
   { href: "/connect", label: "Connect Bank", icon: "＋" },
 ];

@@ -18,6 +18,7 @@ from app.models.account import Account
 from app.models.category import Category
 from app.models.plaid_item import PlaidItem
 from app.models.transaction import Transaction
+from app.models.user_category import CategoryMapping, UserCategory
 from app.repositories.base import BaseRepository
 
 _ZERO = Decimal("0")
@@ -110,13 +111,30 @@ class AnalyticsRepository(BaseRepository):
         end_date: date | None = None,
         account_id: uuid.UUID | None = None,
     ) -> list[Row]:
-        """Spending (outflow only) grouped by category; NULL = uncategorized."""
+        """Spending (outflow only) grouped by category; NULL = uncategorized.
+
+        Rolls up through the user's own category_mappings when one exists
+        for a transaction's Plaid category: every Plaid category mapped to
+        the same user category collapses into one row (that's the whole
+        point of a rollup), while unmapped categories keep grouping
+        individually by their own Plaid category. is_custom tells the
+        caller which table category_id actually refers to — a mapped
+        rollup uses a user_categories id, everything else a categories id
+        (or NULL for uncategorized) — the two are different entities that
+        happen to share a UUID type, not interchangeable.
+        """
         total = func.sum(Transaction.amount).label("total")
+        effective_id = func.coalesce(UserCategory.id, Category.id).label("category_id")
+        effective_name = func.coalesce(UserCategory.name, Category.name).label(
+            "category_name"
+        )
+        is_custom = (UserCategory.id.is_not(None)).label("is_custom")
         query = (
             self._scoped(
                 select(
-                    Transaction.category_id,
-                    Category.name.label("category_name"),
+                    effective_id,
+                    effective_name,
+                    is_custom,
                     total,
                     func.count(Transaction.id).label("transaction_count"),
                 ),
@@ -126,8 +144,14 @@ class AnalyticsRepository(BaseRepository):
                 account_id,
             )
             .outerjoin(Category, Transaction.category_id == Category.id)
+            .outerjoin(
+                CategoryMapping,
+                (CategoryMapping.category_id == Transaction.category_id)
+                & (CategoryMapping.user_id == user_id),
+            )
+            .outerjoin(UserCategory, CategoryMapping.user_category_id == UserCategory.id)
             .where(Transaction.amount > 0)
-            .group_by(Transaction.category_id, Category.name)
+            .group_by(effective_id, effective_name, is_custom)
             .order_by(total.desc())
         )
         return list(await self.session.execute(query))

@@ -12,11 +12,13 @@ from app.models.raw_plaid_transaction import RawPlaidTransaction
 from app.models.receipt import Receipt, ReceiptImage
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.user_category import CategoryMapping, UserCategory
 
 __all__ = [
     "Account",
     "AuthToken",
     "Category",
+    "CategoryMapping",
     "Conversation",
     "Label",
     "Message",
@@ -28,4 +30,5 @@ __all__ = [
     "Transaction",
     "TransactionLabel",
     "User",
+    "UserCategory",
 ]

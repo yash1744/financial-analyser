@@ -13,6 +13,7 @@ Next.js frontend for the FastAPI backend in the repository root.
 | `/accounts` | Synced accounts with balances, manual sync, and editable per-account nicknames |
 | `/connect` | Plaid Link flow: link token → Link UI → exchange → auto-sync |
 | `/analytics` | Monthly spending/income, month-over-month trend, category breakdown, top merchants |
+| `/categories` | Create your own rollup categories and assign Plaid's categories to them |
 | `/assistant` | AI chat over your finances — streamed SSE answers, markdown, tool audit trail |
 | `/verify-email` | Landing page for the emailed verification link (public) |
 | `/forgot-password` | Request a password-reset email (public) |
@@ -111,3 +112,15 @@ filter bar's Labels field is the first *multi-value* filter in
 `TransactionFilters.tsx` — every other field is a single-value `<select>`;
 labels use a checkbox popover instead and match any of the selected labels
 (OR), consistent with how the other filters compose independently.
+
+**User categories** (`app/categories/page.tsx`): a settings-style page, not
+reachable from the transaction workflow the way labels are — assigning a
+Plaid category to a group is a rarely-revisited setup task, not a
+per-transaction action. Two sections: create/rename/delete your own
+categories, and assign each of Plaid's categories to one of them via a
+plain `<Select>` (single-value per Plaid category, since
+`category_mappings`' primary key enforces at most one user category per
+Plaid category). The category-breakdown chart on `/analytics` needed no
+changes at all — it already only renders `category_name`, and the backend
+resolves the effective (mapped-or-raw) name before the response ever
+reaches the frontend.

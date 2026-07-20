@@ -8,6 +8,7 @@ import type {
   AuthResponse,
   Category,
   CategoryBreakdownResponse,
+  CategoryMapping,
   DetailResponse,
   Label,
   LinkTokenResponse,
@@ -21,6 +22,7 @@ import type {
   Transaction,
   TransactionListParams,
   TransactionsSyncResponse,
+  UserCategory,
 } from "./types";
 
 export const api = {
@@ -132,4 +134,27 @@ export const api = {
 
   unassignLabel: (transactionId: string, labelId: string) =>
     apiDelete<Transaction>(`/transactions/${transactionId}/labels/${labelId}`),
+
+  // --- user categories ---
+
+  listUserCategories: () => apiGet<UserCategory[]>("/user-categories"),
+
+  createUserCategory: (name: string) =>
+    apiPost<UserCategory>("/user-categories", { name }),
+
+  renameUserCategory: (categoryId: string, name: string) =>
+    apiPatch<UserCategory>(`/user-categories/${categoryId}`, { name }),
+
+  deleteUserCategory: (categoryId: string) =>
+    apiDelete<void>(`/user-categories/${categoryId}`),
+
+  listCategoryMappings: () => apiGet<CategoryMapping[]>("/user-categories/mappings"),
+
+  setCategoryMapping: (categoryId: string, userCategoryId: string) =>
+    apiPut<CategoryMapping>(`/user-categories/mappings/${categoryId}`, {
+      user_category_id: userCategoryId,
+    }),
+
+  removeCategoryMapping: (categoryId: string) =>
+    apiDelete<void>(`/user-categories/mappings/${categoryId}`),
 };

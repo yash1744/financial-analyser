@@ -42,8 +42,15 @@ and all data access is scoped to the authenticated user.
 | POST | `/api/v1/transactions/{id}/labels/{label_id}` | Assign a label to a transaction (idempotent) |
 | DELETE | `/api/v1/transactions/{id}/labels/{label_id}` | Remove a label from a transaction |
 | GET | `/api/v1/categories` | All categories (flat list with parent ids) |
+| GET | `/api/v1/user-categories` | The caller's own rollup categories (private per user) |
+| POST | `/api/v1/user-categories` | Create a user category |
+| PATCH | `/api/v1/user-categories/{id}` | Rename a user category |
+| DELETE | `/api/v1/user-categories/{id}` | Delete a user category (cascades off its mappings) |
+| GET | `/api/v1/user-categories/mappings` | Every Plaid category → user category assignment the caller has made |
+| PUT | `/api/v1/user-categories/mappings/{category_id}` | Roll a Plaid category up into one of the caller's own categories (repoints if already mapped elsewhere) |
+| DELETE | `/api/v1/user-categories/mappings/{category_id}` | Unmap a Plaid category — reverts to its raw name in analytics |
 | GET | `/api/v1/analytics/monthly-spending` | Spending / income / net per calendar month |
-| GET | `/api/v1/analytics/category-breakdown` | Spending by category with % shares |
+| GET | `/api/v1/analytics/category-breakdown` | Spending by category with % shares — resolved through the caller's category_mappings when one exists |
 | GET | `/api/v1/analytics/top-merchants` | Merchants ranked by total spend |
 | GET | `/api/v1/analytics/month-over-month` | Last N months with deltas vs prior month |
 | GET | `/api/v1/insights/spending-summary` | Headline totals + top category/merchant for a range |
@@ -441,6 +448,23 @@ positive = money out), **income** = sum of negative amounts inverted,
 outflow only, so refunds don't distort them; uncategorized spend is its own
 bucket.
 
+**User categories**: category breakdown resolves each transaction's Plaid
+category through the caller's own `category_mappings` (`LEFT JOIN` +
+`COALESCE`) before grouping — a Plaid category rolled up into one of the
+user's own categories is grouped under that category's name instead, and
+every other Plaid category mapped to the *same* user category collapses
+into that one row too (that's the whole point of a rollup). Unmapped
+categories keep grouping by their own raw Plaid name, unchanged.
+`CategoryBreakdownItem.is_custom` tells the caller which id space
+`category_id` refers to — a `user_categories` id (`true`) or a `categories`
+id (`false`, including the `null` "Uncategorized" case) — since the two are
+different tables that happen to share a UUID type. The mapping itself is
+purely additive: `category_mappings`' primary key is `(user_id,
+category_id)`, so a Plaid category maps to at most one user category per
+user, and nothing about `categories` or `transactions` is ever modified —
+this is a read-time resolution layer, not a rewrite of Plaid's own
+classification.
+
 Index usage: every analytics query is scoped through
 `transactions → accounts → plaid_items` — `ix_plaid_items_user_id` finds the
 user's items, `ix_accounts_plaid_item_id` their accounts, and
@@ -515,11 +539,13 @@ tools, SQL, and SSE framing with no key and no network;
 
 ```
 users 1──* plaid_items 1──* accounts 1──* transactions *──1 categories (optional)
-  │             │                                  │           └── self-ref parent
+  │             │                                  │           │   └── self-ref parent
+  │             │                                  │           └── *──1 category_mappings (per user)
   │             │                                  └── *──* labels  (via transaction_labels)
   │             ├── 1──1 plaid_sync_state          (one /transactions/sync cursor per item)
   │             └── 1──* raw_plaid_transactions    (verbatim JSONB payloads)
   ├── 1──* labels                                  (private per user, unlike categories)
+  ├── 1──* user_categories 1──* category_mappings   (rolls up Plaid categories into a user's own bucket)
   └── 1──* conversations 1──* messages             (chat history; content is JSONB blocks)
 ```
 

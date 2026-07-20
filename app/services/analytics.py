@@ -90,6 +90,7 @@ class AnalyticsService:
                 CategoryBreakdownItem(
                     category_id=row.category_id,
                     category_name=row.category_name or "Uncategorized",
+                    is_custom=row.is_custom,
                     total=_money(row.total),
                     transaction_count=row.transaction_count,
                     share_pct=(

@@ -26,6 +26,8 @@ export const queryKeys = {
     ["transactions", "one", transactionId] as const,
   categories: ["categories"] as const,
   labels: ["labels"] as const,
+  userCategories: ["user-categories"] as const,
+  categoryMappings: ["category-mappings"] as const,
   monthlySpending: (userId: string, opts: object) =>
     ["analytics", "monthly-spending", userId, opts] as const,
   categoryBreakdown: (userId: string, opts: object) =>
@@ -129,6 +131,75 @@ export function useLabelAssignment(transactionId: string) {
   });
 
   return { assign, unassign };
+}
+
+export function useUserCategories() {
+  return useQuery({
+    queryKey: queryKeys.userCategories,
+    queryFn: () => api.listUserCategories(),
+  });
+}
+
+/** Create/rename/delete the caller's own rollup categories. Any of the
+ * three can change how analytics groups spending (a rename changes the
+ * displayed name, a delete drops its mappings via cascade), so both the
+ * category list and analytics queries are invalidated. */
+export function useUserCategoryManagement() {
+  const queryClient = useQueryClient();
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.userCategories });
+    queryClient.invalidateQueries({ queryKey: queryKeys.categoryMappings });
+    queryClient.invalidateQueries({ queryKey: ["analytics"] });
+  };
+
+  const createUserCategory = useMutation({
+    mutationFn: (name: string) => api.createUserCategory(name),
+    onSuccess: invalidateAll,
+  });
+  const renameUserCategory = useMutation({
+    mutationFn: ({ categoryId, name }: { categoryId: string; name: string }) =>
+      api.renameUserCategory(categoryId, name),
+    onSuccess: invalidateAll,
+  });
+  const deleteUserCategory = useMutation({
+    mutationFn: (categoryId: string) => api.deleteUserCategory(categoryId),
+    onSuccess: invalidateAll,
+  });
+
+  return { createUserCategory, renameUserCategory, deleteUserCategory };
+}
+
+export function useCategoryMappings() {
+  return useQuery({
+    queryKey: queryKeys.categoryMappings,
+    queryFn: () => api.listCategoryMappings(),
+  });
+}
+
+/** Assign/remove which user category a Plaid category rolls up into. */
+export function useCategoryMappingMutations() {
+  const queryClient = useQueryClient();
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.categoryMappings });
+    queryClient.invalidateQueries({ queryKey: ["analytics"] });
+  };
+
+  const setMapping = useMutation({
+    mutationFn: ({
+      categoryId,
+      userCategoryId,
+    }: {
+      categoryId: string;
+      userCategoryId: string;
+    }) => api.setCategoryMapping(categoryId, userCategoryId),
+    onSuccess: invalidateAll,
+  });
+  const removeMapping = useMutation({
+    mutationFn: (categoryId: string) => api.removeCategoryMapping(categoryId),
+    onSuccess: invalidateAll,
+  });
+
+  return { setMapping, removeMapping };
 }
 
 export function useMonthlySpending(

@@ -7,6 +7,9 @@ from app.repositories.base import BaseRepository
 
 
 class CategoryRepository(BaseRepository):
+    async def get(self, category_id: uuid.UUID) -> Category | None:
+        return await self.session.get(Category, category_id)
+
     async def list_all(self) -> list[Category]:
         result = await self.session.execute(select(Category).order_by(Category.name))
         return list(result.scalars())

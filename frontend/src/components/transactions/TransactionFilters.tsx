@@ -14,9 +14,9 @@ import type {
 } from "@/lib/api/types";
 
 export interface Filters {
-  account_id: string;
-  category_id: string;
-  classification: TransactionClassification | "";
+  account_ids: string[];
+  category_ids: string[];
+  classifications: TransactionClassification[];
   merchant: string;
   label_ids: string[];
   start_date: string;
@@ -27,17 +27,27 @@ export interface Filters {
   sort_dir: SortDir;
 }
 
-/** Every other filter is single-value, a plain <select>. Labels are the
- * first multi-value filter this component has, so they get their own
- * checkbox popover instead — matches any of the checked labels (OR). */
-function LabelFilterField({
-  labels,
+interface MultiSelectOption {
+  value: string;
+  label: string;
+}
+
+/** Checkbox popover for filters that accept more than one value at once
+ * (matches any of the selected values — OR). Selected values render as
+ * removable chips below the trigger so the active set stays visible
+ * without reopening the popover, plus a "Clear all" inside it. */
+function MultiSelectField({
+  fieldLabel,
+  options,
   selected,
   onChange,
+  emptyHint = "Nothing to select yet.",
 }: {
-  labels: Label[];
+  fieldLabel: string;
+  options: MultiSelectOption[];
   selected: string[];
   onChange: (next: string[]) => void;
+  emptyHint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -53,15 +63,20 @@ function LabelFilterField({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
-  const toggle = (id: string) =>
+  const toggle = (value: string) =>
     onChange(
-      selected.includes(id)
-        ? selected.filter((s) => s !== id)
-        : [...selected, id],
+      selected.includes(value)
+        ? selected.filter((s) => s !== value)
+        : [...selected, value],
     );
+  const remove = (value: string) =>
+    onChange(selected.filter((s) => s !== value));
+
+  const labelOf = (value: string) =>
+    options.find((o) => o.value === value)?.label ?? value;
 
   return (
-    <Field label="Labels">
+    <Field label={fieldLabel}>
       <div className="relative" ref={panelRef}>
         <button
           type="button"
@@ -71,30 +86,61 @@ function LabelFilterField({
           {selected.length === 0 ? "All" : `${selected.length} selected`}
         </button>
         {open && (
-          <div className="absolute left-0 top-full z-10 mt-1 w-48 rounded-lg border border-line bg-surface p-2 shadow-lg">
-            {labels.length === 0 ? (
-              <p className="px-1 py-1 text-xs text-ink-3">No labels yet.</p>
+          <div className="absolute left-0 top-full z-10 mt-1 w-52 rounded-lg border border-line bg-surface p-2 shadow-lg">
+            {options.length === 0 ? (
+              <p className="px-1 py-1 text-xs text-ink-3">{emptyHint}</p>
             ) : (
-              <div className="max-h-48 space-y-0.5 overflow-y-auto">
-                {labels.map((label) => (
-                  <label
-                    key={label.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-ink hover:bg-line"
+              <>
+                {selected.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onChange([])}
+                    className="mb-1 px-1 text-xs text-ink-3 underline-offset-2 hover:text-accent hover:underline"
                   >
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(label.id)}
-                      onChange={() => toggle(label.id)}
-                      className="accent-accent"
-                    />
-                    <span className="truncate">{label.name}</span>
-                  </label>
-                ))}
-              </div>
+                    Clear all
+                  </button>
+                )}
+                <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                  {options.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-ink hover:bg-line"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(option.value)}
+                        onChange={() => toggle(option.value)}
+                        className="accent-accent"
+                      />
+                      <span className="truncate">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
       </div>
+      {selected.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {selected.map((value) => (
+            <span
+              key={value}
+              className="inline-flex items-center gap-1 rounded-full bg-line px-2 py-0.5 text-xs text-ink-2"
+            >
+              <span className="max-w-[8rem] truncate">{labelOf(value)}</span>
+              <button
+                type="button"
+                onClick={() => remove(value)}
+                aria-label={`Remove ${labelOf(value)}`}
+                className="text-ink-3 hover:text-ink"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </Field>
   );
 }
@@ -143,50 +189,28 @@ export function TransactionFilters({
       }}
       className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8"
     >
-      <Field label="Account">
-        <Select
-          value={draft.account_id}
-          onChange={(e) => set("account_id", e.target.value)}
-        >
-          <option value="">All</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.display_name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Category">
-        <Select
-          value={draft.category_id}
-          onChange={(e) => set("category_id", e.target.value)}
-        >
-          <option value="">All</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Type">
-        <Select
-          value={draft.classification}
-          onChange={(e) =>
-            set(
-              "classification",
-              e.target.value as TransactionClassification | "",
-            )
-          }
-        >
-          <option value="">All</option>
-          {CLASSIFICATIONS.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
+      <MultiSelectField
+        fieldLabel="Accounts"
+        options={accounts.map((a) => ({ value: a.id, label: a.display_name }))}
+        selected={draft.account_ids}
+        onChange={(next) => set("account_ids", next)}
+        emptyHint="No accounts yet."
+      />
+      <MultiSelectField
+        fieldLabel="Categories"
+        options={categories.map((c) => ({ value: c.id, label: c.name }))}
+        selected={draft.category_ids}
+        onChange={(next) => set("category_ids", next)}
+        emptyHint="No categories yet."
+      />
+      <MultiSelectField
+        fieldLabel="Type"
+        options={CLASSIFICATIONS}
+        selected={draft.classifications}
+        onChange={(next) =>
+          set("classifications", next as TransactionClassification[])
+        }
+      />
       <Field label="Merchant">
         <TextInput
           type="text"
@@ -195,10 +219,12 @@ export function TransactionFilters({
           onChange={(e) => set("merchant", e.target.value)}
         />
       </Field>
-      <LabelFilterField
-        labels={labels}
+      <MultiSelectField
+        fieldLabel="Labels"
+        options={labels.map((l) => ({ value: l.id, label: l.name }))}
         selected={draft.label_ids}
         onChange={(next) => set("label_ids", next)}
+        emptyHint="No labels yet."
       />
       <Field label="From">
         <TextInput

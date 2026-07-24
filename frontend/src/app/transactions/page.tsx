@@ -18,9 +18,9 @@ import { useRequiredUser } from "@/lib/user";
 const PAGE_SIZE = 25;
 
 const emptyFilters: Filters = {
-  account_id: "",
-  category_id: "",
-  classification: "",
+  account_ids: [],
+  category_ids: [],
+  classifications: [],
   merchant: "",
   label_ids: [],
   start_date: "",
@@ -43,9 +43,10 @@ export default function TransactionsPage() {
 
   const params = useMemo(
     () => ({
-      account_id: filters.account_id || undefined,
-      category_id: filters.category_id || undefined,
-      classification: filters.classification || undefined,
+      account_ids: filters.account_ids.length > 0 ? filters.account_ids : undefined,
+      category_ids: filters.category_ids.length > 0 ? filters.category_ids : undefined,
+      classifications:
+        filters.classifications.length > 0 ? filters.classifications : undefined,
       merchant: filters.merchant || undefined,
       label_ids: filters.label_ids.length > 0 ? filters.label_ids : undefined,
       start_date: filters.start_date || undefined,

@@ -70,9 +70,9 @@ class TransactionQueryService:
             raise NotFoundError(f"user {user_id} does not exist")
         rows, total = await self.transactions.search(
             user_id=user_id,
-            account_id=query.account_id,
-            category_id=query.category_id,
-            classification=query.classification,
+            account_ids=query.account_ids,
+            category_ids=query.category_ids,
+            classifications=query.classifications,
             merchant=query.merchant,
             label_ids=query.label_ids,
             start_date=query.start_date,

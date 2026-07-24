@@ -122,9 +122,12 @@ export interface ReceiptDetailsUpdate {
 }
 
 export interface TransactionListParams {
-  account_id?: string;
-  category_id?: string;
-  classification?: TransactionClassification;
+  /** Match transactions in any one of these accounts (OR). */
+  account_ids?: string[];
+  /** Match transactions in any one of these categories (OR). */
+  category_ids?: string[];
+  /** Match transactions with any one of these classifications (OR). */
+  classifications?: TransactionClassification[];
   /** Case-insensitive substring match on the merchant name (mirrors the
    * backend's TransactionSearchParams.merchant). */
   merchant?: string;

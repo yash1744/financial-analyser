@@ -86,6 +86,7 @@ async def test_read_apis():
     transport = ASGITransport(app=app)
     created_user_ids: list[str] = []
     category_id: uuid.UUID | None = None
+    category2_id: uuid.UUID | None = None
     try:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             # seed: user + item + 2 accounts + 5 transactions via the sync pipeline
@@ -117,20 +118,28 @@ async def test_read_apis():
             )
             assert resp.json()["items"][0]["added"] == 5
 
-            # attach a category to t1 directly (no category write API yet)
+            # attach categories to t1 and t4 directly (no category write API yet)
             from app.db.session import SessionFactory
 
             async with SessionFactory() as session:
                 category = Category(name=f"Coffee-{uuid.uuid4().hex[:6]}")
-                session.add(category)
+                category2 = Category(name=f"Travel-{uuid.uuid4().hex[:6]}")
+                session.add_all([category, category2])
                 await session.flush()
                 category_id = category.id
+                category2_id = category2.id
                 t1 = (
                     await session.execute(
                         select(Transaction).where(Transaction.plaid_transaction_id == "t1")
                     )
                 ).scalar_one()
                 t1.category_id = category.id
+                t4 = (
+                    await session.execute(
+                        select(Transaction).where(Transaction.plaid_transaction_id == "t4")
+                    )
+                ).scalar_one()
+                t4.category_id = category2.id
                 await session.commit()
 
             # GET /accounts: clean DTO, no ORM leakage
@@ -144,6 +153,7 @@ async def test_read_apis():
                 "available_balance", "currency",
             }
             chk_id = next(a["id"] for a in accounts if a["plaid_account_id"] == "chk-1")
+            cc_id = next(a["id"] for a in accounts if a["plaid_account_id"] == "cc-1")
 
             resp = await client.get("/api/v1/accounts")
             assert resp.status_code == 401
@@ -180,35 +190,56 @@ async def test_read_apis():
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t3"}
 
-            # account filter
+            # account filter (single value)
             resp = await client.get("/api/v1/transactions", headers=headers, params={
-                "account_id": chk_id,
+                "account_ids": [chk_id],
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t2", "t5"}
-
-            # category filter
             resp = await client.get("/api/v1/transactions", headers=headers, params={
-                "category_id": str(category_id),
+                "account_ids": [cc_id],
+            })
+            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t3", "t4"}
+            # account filter (multiple values → OR within the filter)
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "account_ids": [chk_id, cc_id],
+            })
+            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {
+                "t1", "t2", "t3", "t4", "t5",
+            }
+
+            # category filter (single value)
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "category_ids": [str(category_id)],
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
-
-            # classification filter
+            # category filter (multiple values → OR within the filter)
             resp = await client.get("/api/v1/transactions", headers=headers, params={
-                "classification": "expense",
+                "category_ids": [str(category_id), str(category2_id)],
+            })
+            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t4"}
+
+            # classification filter (single value)
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "classifications": ["expense"],
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t1"]
             resp = await client.get("/api/v1/transactions", headers=headers, params={
-                "classification": "refund",
+                "classifications": ["refund"],
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t3"]
-            # combines with other filters
+            # classification filter (multiple values → OR within the filter)
             resp = await client.get("/api/v1/transactions", headers=headers, params={
-                "classification": "unknown", "account_id": chk_id,
+                "classifications": ["expense", "refund"],
+            })
+            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t3"}
+            # different filter groups combine with AND
+            resp = await client.get("/api/v1/transactions", headers=headers, params={
+                "classifications": ["unknown"], "account_ids": [chk_id],
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t2", "t5"}
             # invalid value is rejected by schema validation
             resp = await client.get("/api/v1/transactions", headers=headers, params={
-                "classification": "bogus",
+                "classifications": ["bogus"],
             })
             assert resp.status_code == 422
 
@@ -235,7 +266,7 @@ async def test_read_apis():
             })
             assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t2", "t3", "t4"}
             resp = await client.get("/api/v1/transactions", headers=headers, params={
-                "merchant": "r", "account_id": chk_id,
+                "merchant": "r", "account_ids": [chk_id],
             })
             assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t2"]
 
@@ -293,9 +324,10 @@ async def test_read_apis():
             for uid in created_user_ids:
                 user = await session.get(User, uuid.UUID(uid))
                 await session.delete(user)
-            if category_id is not None:
-                category = await session.get(Category, category_id)
-                await session.delete(category)
+            for cid in (category_id, category2_id):
+                if cid is not None:
+                    category = await session.get(Category, cid)
+                    await session.delete(category)
             await session.commit()
     finally:
         app.dependency_overrides.clear()

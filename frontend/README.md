@@ -119,6 +119,16 @@ set stays visible without reopening it. Merchant, date range, and amount
 range stay single-value inputs, since "OR" has no obvious meaning for free
 text or a range.
 
+**Filtered total** (`transactions/page.tsx`): a summary line — "Showing N
+transactions" plus "Total Amount: …" — appears between the table and the
+pagination footer whenever a filter is active and at least one transaction
+matches (`isFiltered && data.total > 0`; with no filters or zero matches,
+the row is simply omitted, no separate empty state needed). The figure is
+`total_amount` straight from the API response — summed server-side over
+every matching row, not just the page on screen — so it stays correct
+across pages and updates for free on every filter/page refetch, formatted
+with the same `formatMoney` helper used for row amounts.
+
 **User categories** (`app/categories/page.tsx`): a settings-style page, not
 reachable from the transaction workflow the way labels are — assigning a
 Plaid category to a group is a rarely-revisited setup task, not a

@@ -146,6 +146,10 @@ export interface TransactionListParams {
 export interface PaginatedTransactions {
   items: Transaction[];
   total: number;
+  /** Sum of `amount` across every transaction matching the active filters
+   * (not just the items on this page). Same sign convention as `amount`:
+   * positive for money out, negative for money in. */
+  total_amount: string;
   page: number;
   page_size: number;
   total_pages: number;

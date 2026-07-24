@@ -68,7 +68,7 @@ class TransactionQueryService:
     ) -> PaginatedTransactionsResponse:
         if await self.users.get(user_id) is None:
             raise NotFoundError(f"user {user_id} does not exist")
-        rows, total = await self.transactions.search(
+        rows, total, total_amount = await self.transactions.search(
             user_id=user_id,
             account_ids=query.account_ids,
             category_ids=query.category_ids,
@@ -87,6 +87,7 @@ class TransactionQueryService:
         return PaginatedTransactionsResponse(
             items=[TransactionResponse.model_validate(row) for row in rows],
             total=total,
+            total_amount=total_amount,
             page=query.page,
             page_size=query.page_size,
             total_pages=math.ceil(total / query.page_size),

@@ -13,6 +13,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonLines } from "@/components/ui/Skeleton";
 import { useAccounts, useCategories, useLabels, useTransactions } from "@/lib/hooks";
 import type { Transaction } from "@/lib/api/types";
+import { formatMoney } from "@/lib/format";
 import { useRequiredUser } from "@/lib/user";
 
 const PAGE_SIZE = 25;
@@ -126,6 +127,16 @@ export default function TransactionsPage() {
                 applyFilters({ ...filters, merchant })
               }
             />
+            {isFiltered && data.total > 0 && (
+              <div className="flex items-center justify-between border-t border-line px-5 py-2.5">
+                <p className="text-xs text-ink-3">
+                  Showing {data.total.toLocaleString()} transactions
+                </p>
+                <p className="text-sm font-medium text-ink">
+                  Total Amount: {formatMoney(data.total_amount)}
+                </p>
+              </div>
+            )}
             <div className="flex items-center justify-between border-t border-line px-5 py-3">
               <p className="text-xs text-ink-3">
                 Page {data.page} of {Math.max(data.total_pages, 1)}

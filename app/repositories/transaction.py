@@ -74,8 +74,10 @@ class TransactionRepository(BaseRepository):
         sort_dir: str = "desc",
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[Transaction], int]:
-        """Filtered, sorted page of a user's transactions plus the total count."""
+    ) -> tuple[list[Transaction], int, Decimal]:
+        """Filtered, sorted page of a user's transactions, plus the total
+        count and summed amount across every matching row (not just the
+        page returned)."""
         conditions = [PlaidItem.user_id == user_id]
         if account_ids is not None:
             conditions.append(Transaction.account_id.in_(account_ids))
@@ -116,9 +118,14 @@ class TransactionRepository(BaseRepository):
             .where(*conditions)
         )
 
-        total = await self.session.scalar(
-            select(func.count()).select_from(scoped.subquery())
-        )
+        counted = scoped.subquery()
+        total, total_amount = (
+            await self.session.execute(
+                select(
+                    func.count(), func.coalesce(func.sum(counted.c.amount), 0)
+                )
+            )
+        ).one()
 
         sort_column = _SORT_COLUMNS[sort_by]
         ordering = sort_column.desc() if sort_dir == "desc" else sort_column.asc()
@@ -129,7 +136,7 @@ class TransactionRepository(BaseRepository):
             .offset(offset)
             .options(selectinload(Transaction.labels))
         )
-        return list(result.scalars()), total or 0
+        return list(result.scalars()), total or 0, total_amount
 
     async def recurring_candidates(
         self, user_id: uuid.UUID, since: date, min_occurrences: int

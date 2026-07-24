@@ -431,6 +431,13 @@ the service boundary.
   ties so pagination is stable.
 - **Pagination**: `page` (1-based) + `page_size` (default 50, max 200);
   responses carry `total` and `total_pages`.
+- **Filtered total**: `total_amount` sums `amount` across every row matching
+  the active filters, not just the page returned — computed alongside
+  `total` in the same `COUNT`/`SUM` query over the shared filter subquery
+  (`TransactionRepository.search()`), so it stays a single extra column
+  rather than a second round-trip. `SUM()` over zero matching rows is SQL
+  `NULL`; that's coalesced to `0` before it reaches the response. Same sign
+  convention as `amount` (positive = money out).
 
 All reads are scoped to the requesting `user_id` through the
 account → item → user join, so one user can never see another's data.

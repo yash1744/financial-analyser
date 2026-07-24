@@ -98,6 +98,19 @@ click/keyboard handling; both buttons get standard focus/Enter/Space
 behavior for free, and each has an explicit accessible name, so the whole
 interaction is keyboard-operable without any custom key handling.
 
+**Receipt attachments** (`components/transactions/ReceiptPanel.tsx`): a
+grid of up to 10 attachments per transaction, images or PDFs mixed
+freely — the upload input, size cap, and delete flow don't distinguish
+between the two. Images render as their usual `<img>` thumbnail; a PDF
+renders as a distinct tile (a "PDF" badge, no attempt at a thumbnail) that
+opens the file in a new tab on click, letting the browser's own native PDF
+viewer handle it rather than embedding one — this covers "view inline"
+for every modern browser without a PDF-rendering dependency, and a
+browser without one just downloads the file instead, satisfying the
+"otherwise provide a download" fallback for free. Every tile also gets an
+explicit Download action (`<a download>`, which forces a save even though
+the server always serves `Content-Disposition: inline`) alongside Delete.
+
 **Labels** (`components/transactions/LabelsPanel.tsx`): user-created,
 private tags assignable to any number of transactions. The detail modal's
 Labels section reads through a dedicated `useTransactionDetail` query

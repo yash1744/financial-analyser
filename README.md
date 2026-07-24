@@ -98,18 +98,24 @@ the email so the flows work with no SMTP server, `smtp` sends via
 ## Receipts
 
 Each transaction can carry one **receipt**: user-entered details (merchant,
-date, notes, tax/tip, comments) plus up to **10 images** (JPEG/PNG/WebP).
-Details and the transaction summary live in Postgres (`receipts`,
-`receipt_images`); image bytes go to object storage. `STORAGE_BACKEND`
-selects the backend: `local` writes under `LOCAL_STORAGE_DIR` (dev, no
-cloud credentials), `r2` uses **Cloudflare R2** via its S3-compatible API
-(`R2_*`). Uploads are validated by declared type, size
-(`RECEIPT_MAX_IMAGE_BYTES`), and magic bytes; storage keys are always
-server-generated uuid paths (never derived from the filename). Image bytes
-are served back through the auth-gated API, never exposed from storage
-directly. Everything is scoped through the transaction→account→item→user
-chain, so a foreign transaction id is indistinguishable from a missing one
-(404).
+date, notes, tax/tip, comments) plus up to **10 attachments** — images
+(JPEG/PNG/WebP) or PDFs, mixed freely. Details and the transaction summary
+live in Postgres (`receipts`, `receipt_images` — the table predates PDF
+support and still holds both kinds of attachment; the column shapes were
+already generic: `content_type`/`file_name`/`size_bytes`/`storage_key`,
+nothing image-specific); attachment bytes go to object storage.
+`STORAGE_BACKEND` selects the backend: `local` writes under
+`LOCAL_STORAGE_DIR` (dev, no cloud credentials), `r2` uses **Cloudflare
+R2** via its S3-compatible API (`R2_*`). Uploads are validated by declared
+type, size (`RECEIPT_MAX_IMAGE_BYTES`, despite the name this caps every
+attachment type), and magic bytes (`%PDF-` for PDFs, the usual signatures
+for images); storage keys are always server-generated uuid paths (never
+derived from the filename). Attachment bytes are served back through the
+auth-gated API with `Content-Disposition: inline` — the browser's native
+PDF viewer renders a PDF the same way an `<img>` renders an image, never
+exposed from storage directly. Everything is scoped through the
+transaction→account→item→user chain, so a foreign transaction id is
+indistinguishable from a missing one (404).
 
 ## Account nicknames
 

@@ -96,8 +96,8 @@ class Settings(BaseSettings):
     r2_access_key_id: str = ""
     r2_secret_access_key: str = ""
     r2_bucket: str = ""
-    receipt_max_image_bytes: int = 10 * 1024 * 1024  # 10 MiB per upload
-    receipt_max_images: int = 10  # per transaction
+    receipt_max_image_bytes: int = 10 * 1024 * 1024  # 10 MiB per upload; also governs PDFs
+    receipt_max_images: int = 10  # per transaction; also counts PDF attachments
 
     # Distributed tracing (OpenTelemetry). "none" (default) initializes the
     # SDK and auto-instrumentation but exports nowhere — safe for CI/local

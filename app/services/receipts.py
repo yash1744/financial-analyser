@@ -1,8 +1,9 @@
-"""ReceiptService: receipt details + images attached to a transaction.
+"""ReceiptService: receipt details + attachments (images or PDFs) for a
+transaction.
 
 Every operation resolves the transaction through the account→item→user
 chain first, so a foreign transaction id behaves exactly like a missing
-one (404). Image bytes live in object storage; the database holds only
+one (404). File bytes live in object storage; the database holds only
 metadata. Uploads are validated by declared type, size, and magic bytes.
 """
 
@@ -28,28 +29,29 @@ from app.services.storage import ObjectNotFoundError, ObjectStorage
 logger = logging.getLogger(__name__)
 
 # Allowed upload types with their file extension and magic-byte signature
-_IMAGE_TYPES = {
+_ALLOWED_TYPES = {
     "image/jpeg": ("jpg", [b"\xff\xd8\xff"]),
     "image/png": ("png", [b"\x89PNG\r\n\x1a\n"]),
     "image/webp": ("webp", [b"RIFF"]),  # + "WEBP" at offset 8, checked below
+    "application/pdf": ("pdf", [b"%PDF-"]),
 }
 
 
-def _validate_image(content_type: str, data: bytes, max_bytes: int) -> None:
-    if content_type not in _IMAGE_TYPES:
-        allowed = ", ".join(sorted(_IMAGE_TYPES))
-        raise InvalidUploadError(f"unsupported image type {content_type!r}; use {allowed}")
+def _validate_upload(content_type: str, data: bytes, max_bytes: int) -> None:
+    if content_type not in _ALLOWED_TYPES:
+        allowed = ", ".join(sorted(_ALLOWED_TYPES))
+        raise InvalidUploadError(f"unsupported file type {content_type!r}; use {allowed}")
     if len(data) == 0:
         raise InvalidUploadError("uploaded file is empty")
     if len(data) > max_bytes:
         raise InvalidUploadError(
-            f"image is {len(data)} bytes; the limit is {max_bytes}"
+            f"file is {len(data)} bytes; the limit is {max_bytes}"
         )
-    _, signatures = _IMAGE_TYPES[content_type]
+    _, signatures = _ALLOWED_TYPES[content_type]
     if not any(data.startswith(s) for s in signatures):
-        raise InvalidUploadError("file content does not match its declared image type")
+        raise InvalidUploadError("file content does not match its declared type")
     if content_type == "image/webp" and data[8:12] != b"WEBP":
-        raise InvalidUploadError("file content does not match its declared image type")
+        raise InvalidUploadError("file content does not match its declared type")
 
 
 class ReceiptService:
@@ -147,7 +149,7 @@ class ReceiptService:
             },
         ):
             transaction = await self._owned_transaction(user_id, transaction_id)
-            _validate_image(content_type, data, self.settings.receipt_max_image_bytes)
+            _validate_upload(content_type, data, self.settings.receipt_max_image_bytes)
 
             receipt = await self.receipts.get_for_transaction(transaction.id)
             if receipt is None:
@@ -155,10 +157,10 @@ class ReceiptService:
             if len(receipt.images) >= self.settings.receipt_max_images:
                 raise ConflictError(
                     f"a transaction can have at most "
-                    f"{self.settings.receipt_max_images} receipt images"
+                    f"{self.settings.receipt_max_images} receipt attachments"
                 )
 
-            extension, _ = _IMAGE_TYPES[content_type]
+            extension, _ = _ALLOWED_TYPES[content_type]
             key = f"receipts/{user_id}/{transaction.id}/{uuid.uuid4().hex}.{extension}"
             await self.storage.put(key, data, content_type)
             try:

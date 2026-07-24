@@ -1,5 +1,5 @@
-"""Receipt attachment tests: details CRUD, image upload/serve/delete,
-the per-transaction image cap, upload validation, and cross-user
+"""Receipt attachment tests: details CRUD, image/PDF upload/serve/delete,
+the per-transaction attachment cap, upload validation, and cross-user
 isolation (a foreign transaction id is indistinguishable from a missing
 one)."""
 
@@ -30,6 +30,7 @@ from tests.conftest import register_user
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
 WEBP = b"RIFF" + b"\x00\x00\x00\x00" + b"WEBP" + b"\x00" * 64
+PDF = b"%PDF-1.4\n" + b"\x00" * 64
 GIF = b"GIF89a" + b"\x00" * 64  # unsupported type
 
 
@@ -174,6 +175,32 @@ async def test_receipt_details_and_image_lifecycle():
             assert resp.status_code == 201
             assert len(resp.json()["images"]) == 2
 
+            # a PDF attaches alongside the images, not as a separate concept
+            resp = await client.post(
+                f"/api/v1/transactions/{txn_id}/receipt/images",
+                files={"file": ("invoice.pdf", PDF, "application/pdf")},
+                headers=headers,
+            )
+            assert resp.status_code == 201, resp.text
+            body = resp.json()
+            assert len(body["images"]) == 3
+            pdf_attachment = next(i for i in body["images"] if i["file_name"] == "invoice.pdf")
+            assert pdf_attachment["content_type"] == "application/pdf"
+            assert pdf_attachment["size_bytes"] == len(PDF)
+            pdf_id = pdf_attachment["id"]
+
+            # fetch it back: correct media type, inline disposition (so the
+            # browser's native PDF viewer can render it rather than forcing
+            # a download)
+            resp = await client.get(
+                f"/api/v1/transactions/{txn_id}/receipt/images/{pdf_id}",
+                headers=headers,
+            )
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "application/pdf"
+            assert 'inline; filename="invoice.pdf"' in resp.headers["content-disposition"]
+            assert resp.content == PDF
+
             # delete the first image
             resp = await client.delete(
                 f"/api/v1/transactions/{txn_id}/receipt/images/{image_id}",
@@ -183,7 +210,7 @@ async def test_receipt_details_and_image_lifecycle():
             resp = await client.get(
                 f"/api/v1/transactions/{txn_id}/receipt", headers=headers
             )
-            assert len(resp.json()["images"]) == 1
+            assert len(resp.json()["images"]) == 2  # webp + pdf remain
             # its bytes are gone
             resp = await client.get(
                 f"/api/v1/transactions/{txn_id}/receipt/images/{image_id}",
@@ -246,21 +273,36 @@ async def test_upload_validation_and_image_cap():
             )
             assert resp.status_code == 400
 
-            # fill to the cap
-            for _ in range(2):
-                resp = await client.post(
-                    f"/api/v1/transactions/{txn_id}/receipt/images",
-                    files={"file": ("ok.png", PNG, "image/png")},
-                    headers=headers,
-                )
-                assert resp.status_code == 201
-            # one more → 409
+            # declared PDF but bytes aren't → 400, same magic-byte check
+            resp = await client.post(
+                f"/api/v1/transactions/{txn_id}/receipt/images",
+                files={"file": ("fake.pdf", b"not a real pdf", "application/pdf")},
+                headers=headers,
+            )
+            assert resp.status_code == 400
+
+            # fill to the cap — a mix of an image and a PDF, since the cap
+            # counts all attachments together, not images alone
+            resp = await client.post(
+                f"/api/v1/transactions/{txn_id}/receipt/images",
+                files={"file": ("ok.png", PNG, "image/png")},
+                headers=headers,
+            )
+            assert resp.status_code == 201
+            resp = await client.post(
+                f"/api/v1/transactions/{txn_id}/receipt/images",
+                files={"file": ("ok.pdf", PDF, "application/pdf")},
+                headers=headers,
+            )
+            assert resp.status_code == 201
+            # one more (of either type) → 409
             resp = await client.post(
                 f"/api/v1/transactions/{txn_id}/receipt/images",
                 files={"file": ("over.png", PNG, "image/png")},
                 headers=headers,
             )
             assert resp.status_code == 409
+            assert "attachments" in resp.json()["detail"]
     finally:
         settings.receipt_max_images = original_max
         app.dependency_overrides.clear()

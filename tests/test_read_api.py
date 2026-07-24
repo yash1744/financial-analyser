@@ -1,6 +1,7 @@
 """Integration tests for GET /accounts, /transactions, /categories."""
 
 import uuid
+from decimal import Decimal
 from typing import Any
 
 from cryptography.fernet import Fernet
@@ -163,6 +164,10 @@ async def test_read_apis():
             body = resp.json()
             assert body["total"] == 5
             assert body["total_pages"] == 1
+            # 10.00 + 25.50 - 40.00 + 99.99 + 5.00, summed over all 5 rows
+            # regardless of the page — there's only one page here, but the
+            # multi-page check below confirms it isn't just summing items
+            assert Decimal(body["total_amount"]) == Decimal("100.49")
             assert [t["plaid_transaction_id"] for t in body["items"]][:2] == ["t4", "t3"]
             assert set(body["items"][0]) == {
                 "id", "account_id", "plaid_transaction_id", "transaction_date",
@@ -184,7 +189,11 @@ async def test_read_apis():
             resp = await client.get("/api/v1/transactions", headers=headers, params={
                 "min_amount": "10",
             })
-            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t2", "t4"}
+            body = resp.json()
+            assert {t["plaid_transaction_id"] for t in body["items"]} == {"t1", "t2", "t4"}
+            # total_amount reflects the filtered set (10.00 + 25.50 + 99.99),
+            # not the unfiltered 100.49 from above
+            assert Decimal(body["total_amount"]) == Decimal("135.49")
             resp = await client.get("/api/v1/transactions", headers=headers, params={
                 "max_amount": "0",
             })
@@ -194,7 +203,9 @@ async def test_read_apis():
             resp = await client.get("/api/v1/transactions", headers=headers, params={
                 "account_ids": [chk_id],
             })
-            assert {t["plaid_transaction_id"] for t in resp.json()["items"]} == {"t1", "t2", "t5"}
+            body = resp.json()
+            assert {t["plaid_transaction_id"] for t in body["items"]} == {"t1", "t2", "t5"}
+            assert Decimal(body["total_amount"]) == Decimal("40.50")
             resp = await client.get("/api/v1/transactions", headers=headers, params={
                 "account_ids": [cc_id],
             })
@@ -257,7 +268,11 @@ async def test_read_apis():
             resp = await client.get("/api/v1/transactions", headers=headers, params={
                 "merchant": "no-such-merchant",
             })
-            assert resp.json()["items"] == []
+            body = resp.json()
+            assert body["items"] == []
+            # SUM() over zero matching rows is SQL NULL, not 0 — must be
+            # coalesced so this stays a clean "0", not null/an error
+            assert Decimal(body["total_amount"]) == Decimal("0")
             # combines with other filters, same as classification above:
             # "r" alone matches Beta Grocers/t2, Gamma Refund/t3, Delta Air/t4
             # (spanning both accounts); adding account_id narrows to just t2
@@ -288,10 +303,16 @@ async def test_read_apis():
             assert [t["plaid_transaction_id"] for t in body["items"]] == ["t4", "t3"]
             assert body["total"] == 5
             assert body["total_pages"] == 3
+            # this page's own items (t4 + t3 = 59.99) sum to something
+            # different from the full filtered set — total_amount must
+            # report the latter, proving it isn't just summing page items
+            assert Decimal(body["total_amount"]) == Decimal("100.49")
             resp = await client.get("/api/v1/transactions", headers=headers, params={
                 "page_size": 2, "page": 3,
             })
-            assert [t["plaid_transaction_id"] for t in resp.json()["items"]] == ["t5"]
+            body = resp.json()
+            assert [t["plaid_transaction_id"] for t in body["items"]] == ["t5"]
+            assert Decimal(body["total_amount"]) == Decimal("100.49")
 
             # invalid ranges → 422
             resp = await client.get("/api/v1/transactions", headers=headers, params={

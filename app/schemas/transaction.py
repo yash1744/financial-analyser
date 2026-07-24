@@ -103,6 +103,7 @@ class TransactionListQuery(TransactionSearchParams):
 class PaginatedTransactionsResponse(BaseModel):
     items: list[TransactionResponse]
     total: int
+    total_amount: Decimal
     page: int
     page_size: int
     total_pages: int

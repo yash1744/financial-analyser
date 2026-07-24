@@ -107,11 +107,17 @@ assigning writes the fresh transaction straight into that query's cache
 and invalidates the transactions list so the table's chips catch up too.
 The "+ Add label" control is a small hand-rolled combobox (search existing
 labels or create one inline) rather than a native `<select>`, since it
-needs both free-text creation and click-to-assign in one control. The
-filter bar's Labels field is the first *multi-value* filter in
-`TransactionFilters.tsx` — every other field is a single-value `<select>`;
-labels use a checkbox popover instead and match any of the selected labels
-(OR), consistent with how the other filters compose independently.
+needs both free-text creation and click-to-assign in one control.
+
+**Multi-select filters** (`MultiSelectField` in `TransactionFilters.tsx`):
+Accounts, Categories, Type, and Labels all share one checkbox-popover
+component — checking several values matches any of them (OR) within that
+filter, while the different filter fields still combine with AND, same as
+before. Selected values render as removable chips under the field (click
+the × to drop one) plus a "Clear all" inside the popover, so the active
+set stays visible without reopening it. Merchant, date range, and amount
+range stay single-value inputs, since "OR" has no obvious meaning for free
+text or a range.
 
 **User categories** (`app/categories/page.tsx`): a settings-style page, not
 reachable from the transaction workflow the way labels are — assigning a

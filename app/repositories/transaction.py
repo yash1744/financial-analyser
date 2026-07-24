@@ -61,9 +61,9 @@ class TransactionRepository(BaseRepository):
         self,
         *,
         user_id: uuid.UUID,
-        account_id: uuid.UUID | None = None,
-        category_id: uuid.UUID | None = None,
-        classification: TransactionClassification | None = None,
+        account_ids: list[uuid.UUID] | None = None,
+        category_ids: list[uuid.UUID] | None = None,
+        classifications: list[TransactionClassification] | None = None,
         merchant: str | None = None,
         label_ids: list[uuid.UUID] | None = None,
         start_date: date | None = None,
@@ -77,12 +77,12 @@ class TransactionRepository(BaseRepository):
     ) -> tuple[list[Transaction], int]:
         """Filtered, sorted page of a user's transactions plus the total count."""
         conditions = [PlaidItem.user_id == user_id]
-        if account_id is not None:
-            conditions.append(Transaction.account_id == account_id)
-        if category_id is not None:
-            conditions.append(Transaction.category_id == category_id)
-        if classification is not None:
-            conditions.append(Transaction.classification == classification)
+        if account_ids is not None:
+            conditions.append(Transaction.account_id.in_(account_ids))
+        if category_ids is not None:
+            conditions.append(Transaction.category_id.in_(category_ids))
+        if classifications is not None:
+            conditions.append(Transaction.classification.in_(classifications))
         if merchant is not None:
             conditions.append(
                 Transaction.merchant_name.ilike(f"%{_escape_like(merchant)}%")

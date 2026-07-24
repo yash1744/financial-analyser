@@ -116,10 +116,11 @@ class FinanceToolset:
                 name="search_transactions",
                 description=(
                     "Find individual transactions with filters (merchant text, "
-                    "date range, amount range, account, category) and "
-                    "sorting/pagination. Use when specific transactions are "
-                    "asked about, e.g. 'my latest Starbucks charges'. Amounts "
-                    "are positive for money out, negative for money in."
+                    "date range, amount range, one or more accounts, "
+                    "categories, or classifications) and sorting/pagination. "
+                    "Use when specific transactions are asked about, e.g. 'my "
+                    "latest Starbucks charges'. Amounts are positive for "
+                    "money out, negative for money in."
                 ),
                 params_model=TransactionSearchParams,
                 handler=lambda p: self._transactions.list_transactions(

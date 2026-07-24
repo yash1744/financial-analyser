@@ -52,9 +52,18 @@ class TransactionSearchParams(BaseModel):
     """Search filters without user_id — shared by the REST query model
     (which adds user_id) and the LLM tool schema (which injects it)."""
 
-    account_id: uuid.UUID | None = None
-    category_id: uuid.UUID | None = None
-    classification: TransactionClassification | None = None
+    account_ids: list[uuid.UUID] | None = Field(
+        default=None,
+        description="Match transactions in any one of these accounts",
+    )
+    category_ids: list[uuid.UUID] | None = Field(
+        default=None,
+        description="Match transactions in any one of these categories",
+    )
+    classifications: list[TransactionClassification] | None = Field(
+        default=None,
+        description="Match transactions with any one of these classifications",
+    )
     merchant: str | None = Field(
         default=None,
         min_length=1,

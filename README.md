@@ -420,11 +420,12 @@ the service boundary.
 
 `GET /transactions` supports:
 
-- **Filters**: `account_id`, `category_id`, `classification`, `merchant`
-  (case-insensitive substring), `label_ids` (repeatable — matches *any* of
-  the given labels), `start_date`/`end_date` (inclusive),
-  `min_amount`/`max_amount` — all combinable; inverted ranges are rejected
-  with 422.
+- **Filters**: `account_ids`, `category_ids`, `classifications` (each an
+  `IN`-based OR within that filter), `label_ids` (repeatable, semi-joined
+  through `transaction_labels` — same OR-within/AND-across semantics),
+  `merchant` (case-insensitive substring), `start_date`/`end_date`
+  (inclusive), `min_amount`/`max_amount` — different filters combine with
+  AND; inverted ranges are rejected with 422.
 - **Sorting**: `sort_by` = `transaction_date` (default) | `amount` |
   `merchant_name`, `sort_dir` = `desc` (default) | `asc`; row id breaks
   ties so pagination is stable.

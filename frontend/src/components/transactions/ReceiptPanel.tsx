@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Receipt section for a transaction: editable details, an image gallery
- * with upload, and per-image / whole-receipt deletion. All backend writes
- * go through useReceiptMutations, which keeps the receipt query cache in
- * sync so the panel reflects each change immediately.
+ * Receipt section for a transaction: editable details, an attachment
+ * gallery (images or PDFs) with upload, and per-attachment / whole-receipt
+ * deletion. All backend writes go through useReceiptMutations, which keeps
+ * the receipt query cache in sync so the panel reflects each change
+ * immediately.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -17,7 +18,8 @@ import type { Receipt, ReceiptDetailsUpdate } from "@/lib/api/types";
 import { useReceipt, useReceiptMutations } from "@/lib/hooks";
 
 const MAX_IMAGES = 10;
-const ACCEPTED = "image/jpeg,image/png,image/webp";
+const ACCEPTED = "image/jpeg,image/png,image/webp,application/pdf";
+const PDF_TYPE = "application/pdf";
 
 type DetailForm = {
   merchant_name: string;
@@ -183,11 +185,11 @@ export function ReceiptPanel({ transactionId }: { transactionId: string }) {
         )}
       </div>
 
-      {/* Images */}
+      {/* Attachments */}
       <div className="border-t border-line pt-4">
         <div className="mb-3 flex items-center justify-between">
           <h4 className="text-sm font-semibold text-ink">
-            Images{" "}
+            Attachments{" "}
             <span className="font-normal text-ink-3">
               ({images.length}/{MAX_IMAGES})
             </span>
@@ -205,7 +207,7 @@ export function ReceiptPanel({ transactionId }: { transactionId: string }) {
             loading={uploadImage.isPending}
             onClick={() => fileInput.current?.click()}
           >
-            {atLimit ? "Limit reached" : "Upload image"}
+            {atLimit ? "Limit reached" : "Upload file"}
           </Button>
         </div>
 
@@ -215,34 +217,64 @@ export function ReceiptPanel({ transactionId }: { transactionId: string }) {
 
         {images.length === 0 ? (
           <p className="text-xs text-ink-3">
-            No images yet. Upload JPEG, PNG, or WebP files (up to {MAX_IMAGES}).
+            No attachments yet. Upload JPEG, PNG, WebP, or PDF files (up to{" "}
+            {MAX_IMAGES}).
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {images.map((image) => (
-              <figure
-                key={image.id}
-                className="group relative overflow-hidden rounded-lg border border-line"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={api.receiptImageUrl(transactionId, image.id)}
-                  alt={image.file_name}
-                  className="h-32 w-full object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => deleteImage.mutate(image.id)}
-                  className="absolute right-1.5 top-1.5 rounded-md bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
-                  aria-label={`Delete ${image.file_name}`}
+            {images.map((image) => {
+              const isPdf = image.content_type === PDF_TYPE;
+              const url = api.receiptImageUrl(transactionId, image.id);
+              return (
+                <figure
+                  key={image.id}
+                  className="group relative overflow-hidden rounded-lg border border-line"
                 >
-                  Delete
-                </button>
-                <figcaption className="truncate px-2 py-1 text-[11px] text-ink-3">
-                  {image.file_name}
-                </figcaption>
-              </figure>
-            ))}
+                  {isPdf ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-32 w-full flex-col items-center justify-center gap-1 bg-line text-ink-3 hover:text-ink"
+                      title={`Open ${image.file_name} in a new tab`}
+                    >
+                      <span className="rounded bg-bad/10 px-2 py-1 text-xs font-bold text-bad">
+                        PDF
+                      </span>
+                      <span className="text-[11px]">Open in new tab</span>
+                    </a>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={url}
+                      alt={image.file_name}
+                      className="h-32 w-full object-cover"
+                    />
+                  )}
+                  <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <a
+                      href={url}
+                      download={image.file_name}
+                      className="rounded-md bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80"
+                      aria-label={`Download ${image.file_name}`}
+                    >
+                      Download
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => deleteImage.mutate(image.id)}
+                      className="rounded-md bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80"
+                      aria-label={`Delete ${image.file_name}`}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  <figcaption className="truncate px-2 py-1 text-[11px] text-ink-3">
+                    {image.file_name}
+                  </figcaption>
+                </figure>
+              );
+            })}
           </div>
         )}
       </div>

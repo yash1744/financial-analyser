@@ -99,8 +99,8 @@ async def upload_receipt_image(
     user: CurrentUserDep,
     service: ReceiptServiceDep,
 ) -> ReceiptResponse:
-    """Attach one image (JPEG/PNG/WebP, multipart field name `file`).
-    Creates the receipt on first upload; at most 10 images per transaction."""
+    """Attach one file (JPEG/PNG/WebP/PDF, multipart field name `file`).
+    Creates the receipt on first upload; at most 10 attachments per transaction."""
     data = await file.read()
     return await service.add_image(
         user.id,
@@ -118,8 +118,10 @@ async def get_receipt_image(
     user: CurrentUserDep,
     service: ReceiptServiceDep,
 ) -> Response:
-    """The image bytes themselves, served through the API so the auth
-    cookie/token gates access (storage is never exposed directly)."""
+    """The attachment's bytes (image or PDF), served through the API so the
+    auth cookie/token gates access (storage is never exposed directly).
+    `Content-Disposition: inline` lets the browser render it directly
+    (native PDF viewer included) rather than forcing a download."""
     data, image = await service.get_image(user.id, transaction_id, image_id)
     return Response(
         content=data,

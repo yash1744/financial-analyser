@@ -1,14 +1,12 @@
-# Production stack: (edge Caddy on the host, separate compose project) →
-# Next.js → FastAPI → Postgres.
+# Production stack: Caddy (TLS + security headers) → Next.js → FastAPI → Postgres.
 #
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   DOMAIN=finance.example.com ACME_EMAIL=you@example.com \
+#     docker compose -f docker-compose.prod.yml up -d --build
 #
-# frontend/api are NOT exposed to the host — no ports mapping. They join the
-# external `media` Docker network so the host's standalone Caddy (a separate
-# compose project, see ~/caddy-compose) can reach them by service name and
-# terminate TLS for finance.91.98.89.27.sslip.io. The `media` network must
-# already exist (`docker network create media`, or created by the caddy
-# stack) before `up` here.
+# Only Caddy is exposed to the host. The browser talks to Next, Next
+# proxies /api/v1/* to the API on the internal network — one origin, so
+# the httpOnly auth cookie stays first-party. DOMAIN=localhost (default)
+# uses Caddy's internal self-signed CA for local verification.
 #
 # Requires in .env (enforced at boot once ENVIRONMENT != local):
 #   ENVIRONMENT=production  JWT_SECRET_KEY=…  TOKEN_ENCRYPTION_KEY=…  PLAID_*
@@ -16,12 +14,26 @@
 #   docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - api
+
   frontend:
     build: ./frontend
     restart: unless-stopped
-    networks:
-      - default
-      - media
 
   api:
     build: .
@@ -34,9 +46,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      - default
-      - media
 
   db:
     image: postgres:17-alpine
@@ -84,9 +93,7 @@ services:
       - -c
       - while true; do /scripts/db_backup.sh; sleep "$${BACKUP_INTERVAL_SECONDS}"; done
 
-networks:
-  media:
-    external: true
-
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:

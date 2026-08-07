@@ -37,7 +37,11 @@ if [ -n "${R2_ACCOUNT_ID:-}" ] && [ -n "${R2_ACCESS_KEY_ID:-}" ] \
   export RCLONE_CONFIG_R2BACKUP_ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
   export RCLONE_CONFIG_R2BACKUP_ACL=private
 
-  rclone copyto "$TARGET" "r2backup:$R2_BACKUP_BUCKET/$(basename "$TARGET")"
+  # --s3-no-check-bucket: skip rclone's pre-flight bucket-exists/create check.
+  # R2 API tokens are scoped to an existing bucket's objects and don't carry
+  # bucket-management permission, so that check 403s even when the bucket is
+  # fine and the actual upload would succeed.
+  rclone copyto --s3-no-check-bucket "$TARGET" "r2backup:$R2_BACKUP_BUCKET/$(basename "$TARGET")"
   echo "uploaded to r2://$R2_BACKUP_BUCKET/$(basename "$TARGET")"
 else
   echo "R2 not configured (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BACKUP_BUCKET) - skipping upload"
